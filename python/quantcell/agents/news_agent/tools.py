@@ -4,10 +4,9 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from agno.agent import Agent
 from loguru import logger
 
-from quantcell.adapters.models import create_model
+from quantcell.utils.model import create_chat_model_with_provider
 
 
 async def web_search(query: str) -> str:
@@ -32,13 +31,13 @@ async def web_search(query: str) -> str:
 
     # Use Perplexity Sonar via OpenRouter for web search
     # Perplexity models are optimized for web search and real-time information
-    model = create_model(
+    model = create_chat_model_with_provider(
         provider="openrouter",
         model_id="perplexity/sonar",
         max_tokens=None,
     )
-    response = await Agent(model=model).arun(query)
-    return response.content
+    response = await model.ainvoke(query)
+    return str(response.content)
 
 
 async def _web_search_google(query: str) -> str:
@@ -52,15 +51,18 @@ async def _web_search_google(query: str) -> str:
     Returns:
         A summary of the top search results.
     """
-    # Use Google Gemini with search enabled
-    # The search=True parameter enables Google Search grounding for real-time information
-    model = create_model(
+    # Use Google Gemini with search grounding enabled for real-time information
+    model = create_chat_model_with_provider(
         provider="google",
         model_id="gemini-2.5-flash",
-        search=True,  # Enable Google Search grounding
     )
-    response = await Agent(model=model).arun(query)
-    return response.content
+    try:
+        grounded = model.bind_tools([{"google_search": {}}])
+        response = await grounded.ainvoke(query)
+    except Exception:
+        # Search grounding unsupported by this model/SDK combination
+        response = await model.ainvoke(query)
+    return str(response.content)
 
 
 async def get_breaking_news() -> str:
