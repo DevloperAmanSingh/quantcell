@@ -133,3 +133,158 @@ class TestOllamaBuilder:
         assert isinstance(model, ChatOllama)
         assert model.model == "llama3.1"
         assert model.base_url == "http://localhost:11434"
+
+
+# ============================================
+# Factory-level tests (agent resolution + fallback)
+# ============================================
+
+from quantcell.adapters.models.langchain_factory import (  # noqa: E402
+    LangChainModelFactory,
+)
+from quantcell.config.manager import AgentConfig, AgentModelConfig  # noqa: E402
+
+
+class StubConfigManager:
+    """Minimal ConfigManager double for factory resolution tests."""
+
+    def __init__(
+        self,
+        providers: dict[str, ProviderConfig],
+        primary_provider: str = "openai",
+        fallback_providers: list[str] | None = None,
+        agents: dict[str, AgentConfig] | None = None,
+        invalid_providers: set[str] | None = None,
+    ):
+        self._providers = providers
+        self.primary_provider = primary_provider
+        self.fallback_providers = fallback_providers or []
+        self._agents = agents or {}
+        self._invalid = invalid_providers or set()
+
+    def get_provider_config(self, name):
+        return self._providers.get(name)
+
+    def validate_provider(self, name):
+        if name in self._invalid:
+            return False, f"no API key for {name}"
+        if name not in self._providers:
+            return False, f"unknown provider {name}"
+        return True, None
+
+    def get_agent_config(self, name):
+        return self._agents.get(name)
+
+
+def make_agent_config(
+    name: str, provider: str, model_id: str, provider_models=None
+) -> AgentConfig:
+    return AgentConfig(
+        name=name,
+        enabled=True,
+        primary_model=AgentModelConfig(
+            model_id=model_id,
+            provider=provider,
+            parameters={},
+            provider_models=provider_models,
+        ),
+        embedding_model=None,
+        api_keys={},
+        capabilities={},
+        extra_config={},
+    )
+
+
+class TestFactoryResolution:
+    def test_uses_primary_provider_by_default(self):
+        cm = StubConfigManager(
+            providers={"openai": make_config("openai", default_model="gpt-4o")},
+            primary_provider="openai",
+        )
+        model = LangChainModelFactory(cm).create_chat_model()
+        assert isinstance(model, ChatOpenAI)
+        assert model.model_name == "gpt-4o"
+
+    def test_agent_config_selects_provider_and_model(self):
+        cm = StubConfigManager(
+            providers={
+                "openai": make_config("openai", default_model="gpt-4o"),
+                "google": make_config("google", default_model="gemini-2.5-flash"),
+            },
+            primary_provider="openai",
+            agents={
+                "research_agent": make_agent_config(
+                    "research_agent", "google", "gemini-2.5-pro"
+                )
+            },
+        )
+        model = LangChainModelFactory(cm).create_chat_model_for_agent("research_agent")
+        assert isinstance(model, ChatGoogleGenerativeAI)
+        assert model.model == "gemini-2.5-pro"
+
+    def test_unavailable_agent_provider_falls_back_to_primary(self):
+        cm = StubConfigManager(
+            providers={
+                "openai": make_config("openai", default_model="gpt-4o"),
+                "google": make_config("google", default_model="gemini-2.5-flash"),
+            },
+            primary_provider="openai",
+            invalid_providers={"google"},
+            agents={
+                "news_agent": make_agent_config(
+                    "news_agent",
+                    "google",
+                    "gemini-2.5-pro",
+                    provider_models={"openai": "gpt-4o-mini"},
+                )
+            },
+        )
+        model = LangChainModelFactory(cm).create_chat_model_for_agent("news_agent")
+        assert isinstance(model, ChatOpenAI)
+        # provider_models mapping for the fallback provider must win
+        assert model.model_name == "gpt-4o-mini"
+
+    def test_fallback_chain_on_provider_failure(self):
+        cm = StubConfigManager(
+            providers={
+                "openai": make_config("openai", default_model="gpt-4o"),
+                "ollama": make_config(
+                    "ollama",
+                    api_key=None,
+                    default_model="llama3.1",
+                    parameters={"host": "http://localhost:11434"},
+                ),
+            },
+            primary_provider="openai",
+            fallback_providers=["ollama"],
+            invalid_providers={"openai"},
+        )
+        model = LangChainModelFactory(cm).create_chat_model()
+        assert isinstance(model, ChatOllama)
+        assert model.model == "llama3.1"
+
+    def test_all_providers_failing_raises(self):
+        cm = StubConfigManager(
+            providers={"openai": make_config("openai", default_model="gpt-4o")},
+            primary_provider="openai",
+            fallback_providers=[],
+            invalid_providers={"openai"},
+        )
+        with pytest.raises(ValueError, match="all fallback providers failed"):
+            LangChainModelFactory(cm).create_chat_model()
+
+    def test_no_fallback_reraises_original_error(self):
+        cm = StubConfigManager(
+            providers={"openai": make_config("openai", default_model="gpt-4o")},
+            primary_provider="openai",
+            invalid_providers={"openai"},
+        )
+        with pytest.raises(ValueError, match="validation failed"):
+            LangChainModelFactory(cm).create_chat_model(use_fallback=False)
+
+    def test_unknown_agent_raises(self):
+        cm = StubConfigManager(
+            providers={"openai": make_config("openai", default_model="gpt-4o")}
+        )
+        with pytest.raises(ValueError, match="Agent configuration not found"):
+            LangChainModelFactory(cm).create_chat_model_for_agent("ghost_agent")
