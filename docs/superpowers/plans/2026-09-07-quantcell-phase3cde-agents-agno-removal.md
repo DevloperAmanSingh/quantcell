@@ -26,32 +26,32 @@
 ---
 
 ### Task 1: Embeddings factory (TDD)
-- [ ] Failing tests in `quantcell/tests/test_langchain_factory.py`: builders per provider family return right classes with base_url/api key wiring; agent resolution honors `embedding_model` config and falls back like the Agno `create_embedder_for_agent`.
-- [ ] Implement `build_embeddings` + `LangChainModelFactory.create_embeddings_for_agent` + `utils/model.py:get_embeddings_for_agent`.
-- [ ] Commit `feat: langchain embeddings factory`.
+- [x] Failing tests in `quantcell/tests/test_langchain_factory.py`: builders per provider family return right classes with base_url/api key wiring; agent resolution honors `embedding_model` config and falls back like the Agno `create_embedder_for_agent`.
+- [x] Implement `build_embeddings` + `LangChainModelFactory.create_embeddings_for_agent` + `utils/model.py:get_embeddings_for_agent`.
+- [x] Commit `feat: langchain embeddings factory`.
 
 ### Task 2: Research knowledge stack (TDD)
-- [ ] `uv add langchain-community langchain-text-splitters lancedb pypdf`.
-- [ ] Rewrite `vdb.py` (LangChain LanceDB, None-graceful) and `knowledge.py` (KnowledgeBase wrapper: add_markdown_file/add_pdf_url/search; insert_* wrappers preserved).
-- [ ] Rewrite `research_agent/tests/test_fault_tolerance.py` for the new seams; PASS.
-- [ ] Commit `feat: migrate research knowledge base to langchain lancedb`.
+- [x] `uv add langchain-community langchain-text-splitters lancedb pypdf`.
+- [x] Rewrite `vdb.py` (LangChain LanceDB, None-graceful) and `knowledge.py` (KnowledgeBase wrapper: add_markdown_file/add_pdf_url/search; insert_* wrappers preserved).
+- [x] Rewrite `research_agent/tests/test_fault_tolerance.py` for the new seams; PASS.
+- [x] Commit `feat: migrate research knowledge base to langchain lancedb`.
 
 ### Task 3: ResearchAgent → LangGraph ReAct (TDD)
-- [ ] Shared adapter `agents/utils/langgraph_stream.py` + tests (fake tool-calling model: content chunks, tool call start/complete mapping, done).
-- [ ] Rewrite `research_agent/core.py`: react agent, knowledge tool conditional, `sources.py` web_search → chat `ainvoke`.
-- [ ] Commit `feat: migrate research agent to langgraph react`.
+- [x] Shared adapter `agents/utils/langgraph_stream.py` + tests (fake tool-calling model: content chunks, tool call start/complete mapping, done).
+- [x] Rewrite `research_agent/core.py`: react agent, knowledge tool conditional, `sources.py` web_search → chat `ainvoke`.
+- [x] Commit `feat: migrate research agent to langgraph react`.
 
 ### Task 4: NewsAgent → LangGraph ReAct
-- [ ] Rewrite `news_agent/core.py` (stream/run/get_capabilities preserved) + `tools.py` web_search.
-- [ ] Commit `feat: migrate news agent to langgraph`.
+- [x] Rewrite `news_agent/core.py` (stream/run/get_capabilities preserved) + `tools.py` web_search.
+- [x] Commit `feat: migrate news agent to langgraph`.
 
 ### Task 5: Trading composers + assets fallback
-- [ ] `utils/model.py`: `create_chat_model_with_provider`, `get_chat_model`.
-- [ ] `prompt_based/composer.py` `_call_llm` → ainvoke + JSON parse to `TradePlanProposal` (timeout + failure fallback preserved); `grid_composer/llm_param_advisor.py` likewise for `GridParamAdvice`; `adapters/assets/manager.py` fallback search → chat model invoke.
-- [ ] Commit `feat: migrate trading llm composers and asset search to langchain`.
+- [x] `utils/model.py`: `create_chat_model_with_provider`, `get_chat_model`.
+- [x] `prompt_based/composer.py` `_call_llm` → ainvoke + JSON parse to `TradePlanProposal` (timeout + failure fallback preserved); `grid_composer/llm_param_advisor.py` likewise for `GridParamAdvice`; `adapters/assets/manager.py` fallback search → chat model invoke.
+- [x] Commit `feat: migrate trading llm composers and asset search to langchain`.
 
 ### Task 6: Remove Agno
-- [ ] Delete Agno factory (`adapters/models/factory.py`), Agno helpers in `utils/model.py`; rewrite `adapters/models/__init__.py`; fix `core/constants.py` comment; sweep remaining imports.
-- [ ] `cd python && uv remove agno`.
-- [ ] Full suite green; `import quantcell.server.main` clean; agno grep empty.
-- [ ] Commit `feat: remove agno dependency` + push.
+- [x] Delete Agno factory (`adapters/models/factory.py`), Agno helpers in `utils/model.py`; rewrite `adapters/models/__init__.py`; fix `core/constants.py` comment; sweep remaining imports.
+- [x] `cd python && uv remove agno`.
+- [x] Full suite green; `import quantcell.server.main` clean; agno grep empty.
+- [x] Commit `feat: remove agno dependency` + push.
