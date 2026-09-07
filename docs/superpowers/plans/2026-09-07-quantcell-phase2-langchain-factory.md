@@ -20,9 +20,9 @@
 
 ### Task 1: Dependencies
 
-- [ ] **Step 1:** `cd python && uv add langchain-openai langchain-google-genai langchain-ollama`
-- [ ] **Step 2:** Verify import: `uv run python -c "from langchain_openai import ChatOpenAI, AzureChatOpenAI; from langchain_google_genai import ChatGoogleGenerativeAI; from langchain_ollama import ChatOllama; print('ok')"`
-- [ ] **Step 3:** Commit: `git add pyproject.toml uv.lock && git commit -m "feat: add langchain provider dependencies"`
+- [x] **Step 1:** `cd python && uv add langchain-openai langchain-google-genai langchain-ollama`
+- [x] **Step 2:** Verify import: `uv run python -c "from langchain_openai import ChatOpenAI, AzureChatOpenAI; from langchain_google_genai import ChatGoogleGenerativeAI; from langchain_ollama import ChatOllama; print('ok')"`
+- [x] **Step 3:** Commit: `git add pyproject.toml uv.lock && git commit -m "feat: add langchain provider dependencies"`
 
 ### Task 2: Provider builders (TDD)
 
@@ -33,11 +33,11 @@
 **Interfaces:**
 - Produces: `build_chat_model(provider: str, config: ProviderConfig, model_id: str | None, **params) -> BaseChatModel`; registry `LC_PROVIDER_BUILDERS: dict[str, Callable]` keyed by the 9 provider names.
 
-- [ ] **Step 1:** Write failing tests: one per provider asserting returned class and key attrs (`model_name`/`model`, `base_url`, azure deployment/api_version), using hand-built `ProviderConfig` objects. Include: unknown provider raises `ValueError`; `model_id=None` falls back to `config.default_model`; provider params merge with call kwargs (kwargs win).
-- [ ] **Step 2:** Run: `uv run pytest quantcell/tests/test_langchain_factory.py -v` → FAIL (module missing).
-- [ ] **Step 3:** Implement builders: `ChatOpenAI` (openai + the 5 compatible providers, each with its config `base_url`), `AzureChatOpenAI` (deployment name = model_id, `azure_endpoint`, `api_version` from `extra_config`), `ChatGoogleGenerativeAI`, `ChatOllama` (base_url from `parameters["host"]`).
-- [ ] **Step 4:** Run tests → PASS.
-- [ ] **Step 5:** Commit: `git commit -am "feat: langchain chat model builders for all 9 providers"`
+- [x] **Step 1:** Write failing tests: one per provider asserting returned class and key attrs (`model_name`/`model`, `base_url`, azure deployment/api_version), using hand-built `ProviderConfig` objects. Include: unknown provider raises `ValueError`; `model_id=None` falls back to `config.default_model`; provider params merge with call kwargs (kwargs win).
+- [x] **Step 2:** Run: `uv run pytest quantcell/tests/test_langchain_factory.py -v` → FAIL (module missing).
+- [x] **Step 3:** Implement builders: `ChatOpenAI` (openai + the 5 compatible providers, each with its config `base_url`), `AzureChatOpenAI` (deployment name = model_id, `azure_endpoint`, `api_version` from `extra_config`), `ChatGoogleGenerativeAI`, `ChatOllama` (base_url from `parameters["host"]`).
+- [x] **Step 4:** Run tests → PASS.
+- [x] **Step 5:** Commit: `git commit -am "feat: langchain chat model builders for all 9 providers"`
 
 ### Task 3: Factory with agent resolution + fallback (TDD)
 
@@ -48,11 +48,11 @@
 **Interfaces:**
 - Produces: `LangChainModelFactory(config_manager=None)` with `create_chat_model(model_id=None, provider=None, use_fallback=True, provider_models=None, **kwargs)` and `create_chat_model_for_agent(agent_name, **kwargs)`; module-level singletons `get_langchain_model_factory()`, `create_chat_model()`, `create_chat_model_for_agent()` mirroring `factory.py`.
 
-- [ ] **Step 1:** Write failing tests with a stub ConfigManager: primary-provider selection; agent YAML resolution (provider+model_id from agent config); unavailable configured provider falls back to primary with `provider_models` mapping honored; fallback chain tried in order on builder failure; all-fail raises `ValueError`.
-- [ ] **Step 2:** Run → FAIL.
-- [ ] **Step 3:** Implement, mirroring `ModelFactory.create_model` / `create_model_for_agent` resolution logic (validate via `config_manager.validate_provider`, same priority rules).
-- [ ] **Step 4:** Run → PASS.
-- [ ] **Step 5:** Commit: `git commit -am "feat: langchain model factory with agent config and fallback"`
+- [x] **Step 1:** Write failing tests with a stub ConfigManager: primary-provider selection; agent YAML resolution (provider+model_id from agent config); unavailable configured provider falls back to primary with `provider_models` mapping honored; fallback chain tried in order on builder failure; all-fail raises `ValueError`.
+- [x] **Step 2:** Run → FAIL.
+- [x] **Step 3:** Implement, mirroring `ModelFactory.create_model` / `create_model_for_agent` resolution logic (validate via `config_manager.validate_provider`, same priority rules).
+- [x] **Step 4:** Run → PASS.
+- [x] **Step 5:** Commit: `git commit -am "feat: langchain model factory with agent config and fallback"`
 
 ### Task 4: utils/model.py helpers (TDD)
 
@@ -63,11 +63,11 @@
 **Interfaces:**
 - Produces: `get_chat_model_for_agent(agent_name, **kwargs)`, `chat_model_should_use_json_mode(model) -> bool`, `describe_chat_model(model) -> str`.
 
-- [ ] **Step 1:** Failing tests: `chat_model_should_use_json_mode` returns True for `ChatGoogleGenerativeAI`, True for `ChatOpenAI` with non-OpenAI `base_url` (deepseek/openrouter/etc.), True for plain OpenAI (mirrors Agno helper), False for `ChatOllama` (local models use prompt-based JSON); `describe_chat_model` formats "model (via provider-class)".
-- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** Run → PASS.
-- [ ] **Step 5:** Commit: `git commit -am "feat: langchain model helpers in utils"`
+- [x] **Step 1:** Failing tests: `chat_model_should_use_json_mode` returns True for `ChatGoogleGenerativeAI`, True for `ChatOpenAI` with non-OpenAI `base_url` (deepseek/openrouter/etc.), True for plain OpenAI (mirrors Agno helper), False for `ChatOllama` (local models use prompt-based JSON); `describe_chat_model` formats "model (via provider-class)".
+- [x] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** Run → PASS.
+- [x] **Step 5:** Commit: `git commit -am "feat: langchain model helpers in utils"`
 
 ### Task 5: Full verification + push
 
-- [ ] **Step 1:** `uv run pytest -q` full suite → 401 pre-existing + new tests all pass.
-- [ ] **Step 2:** `git push`
+- [x] **Step 1:** `uv run pytest -q` full suite → 401 pre-existing + new tests all pass.
+- [x] **Step 2:** `git push`
