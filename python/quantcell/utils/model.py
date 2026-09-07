@@ -138,6 +138,78 @@ def model_should_use_json_mode(model: AgnoModel) -> bool:
     return False
 
 
+# ============================================
+# LangChain model helpers (Phase 2+)
+#
+# Parallel to the Agno helpers above; used by LangGraph-based agents.
+# The Agno helpers are removed once the last agent migrates.
+# ============================================
+
+
+def describe_chat_model(model) -> str:
+    """Human-readable description of a LangChain chat model."""
+    try:
+        model_id = (
+            getattr(model, "model_name", None)
+            or getattr(model, "model", None)
+            or getattr(model, "deployment_name", None)
+        )
+        return f"{model_id} (via {type(model).__name__})"
+    except Exception:
+        return "unknown model/provider"
+
+
+def chat_model_should_use_json_mode(model) -> bool:
+    """
+    Determine if a LangChain chat model should use JSON mode instead of
+    provider-native structured outputs.
+
+    Mirrors `model_should_use_json_mode` (the Agno helper): every hosted
+    provider we support either requires JSON mode (Gemini, DeepSeek,
+    DashScope) or is safer with it (OpenAI-compatible proxies), so hosted
+    models return True. Local Ollama models return False: many local models
+    lack reliable JSON mode, so prompt-based structured output is used
+    instead.
+    """
+    try:
+        from langchain_ollama import ChatOllama
+
+        if isinstance(model, ChatOllama):
+            logger.debug("Detected Ollama model - not using JSON mode")
+            return False
+    except ImportError:
+        pass
+
+    logger.debug(f"Using JSON mode for chat model: {describe_chat_model(model)}")
+    return True
+
+
+def get_chat_model_for_agent(agent_name: str, **kwargs):
+    """
+    Get a LangChain chat model configured for an agent (three-tier config).
+
+    LangChain counterpart of `get_model_for_agent`; used by LangGraph agents.
+
+    Args:
+        agent_name: Agent name matching configs/agents/<agent_name>.yaml
+        **kwargs: Override parameters for this call
+
+    Returns:
+        A LangChain BaseChatModel configured for the agent.
+    """
+    from quantcell.adapters.models.langchain_factory import (
+        create_chat_model_for_agent,
+    )
+
+    try:
+        return create_chat_model_for_agent(agent_name, **kwargs)
+    except Exception as e:
+        logger.error(
+            f"Failed to create LangChain chat model for agent '{agent_name}': {e}"
+        )
+        raise
+
+
 def get_model(env_key: str, **kwargs):
     """
     Get model instance using configuration system with environment variable override.
