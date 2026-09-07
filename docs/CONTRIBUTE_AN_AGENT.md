@@ -291,17 +291,17 @@ Agents can use tools to extend their capabilities. Tools are Python functions th
 ### Defining Tools
 
 ```python
-from agno.agent import Agent
-from agno.db.in_memory import InMemoryDb
-from quantcell.utils.model import get_model_for_agent
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
+from quantcell.utils.model import get_chat_model_for_agent
 
 def search_stock_info(ticker: str) -> str:
     """
     Search for stock information by ticker symbol.
-    
+
     Args:
         ticker: Stock ticker symbol (e.g., "AAPL", "GOOGL")
-    
+
     Returns:
         Stock information as a string
     """
@@ -311,10 +311,10 @@ def search_stock_info(ticker: str) -> str:
 def calculate_metrics(data: dict) -> dict:
     """
     Calculate financial metrics from stock data.
-    
+
     Args:
         data: Dictionary containing financial data
-    
+
     Returns:
         Dictionary with calculated metrics
     """
@@ -322,14 +322,17 @@ def calculate_metrics(data: dict) -> dict:
     return {"pe_ratio": 25.5, "market_cap": "2.5T"}
 
 class MyAgent(BaseAgent):
-   def __init__(self, **kwargs):
-      super().__init__(**kwargs)
-      self.inner = Agent(
-         ...
-         tools=[search_stock_info, calculate_metrics],  # Register your tools
-         ...
-      )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.graph = create_react_agent(
+            get_chat_model_for_agent("my_agent"),
+            [search_stock_info, calculate_metrics],  # Register your tools
+            prompt="You are a helpful financial assistant.",
+            checkpointer=InMemorySaver(),  # per-conversation memory
+        )
 ```
+
+The LangGraph ReAct agent handles the reason → call tool → observe → repeat loop automatically; plain Python functions with docstrings and type hints become tools.
 
 ### Tool Best Practices
 
@@ -339,7 +342,7 @@ class MyAgent(BaseAgent):
 - **Focused functionality**: Each tool should do one thing well
 
 > [!TIP]
-> For more information, refer to [Tools - Agno](https://docs.agno.com/concepts/agents/tools).
+> For more information, refer to the [LangGraph tool-calling docs](https://docs.langchain.com/oss/python/langgraph/use-tools).
 
 ## Event System (Contracts)
 
@@ -407,55 +410,37 @@ yield streaming.component_generator(
 Use the `streaming.*` helpers to emit events. Here's a practical example based on the Research Agent implementation:
 
 ```python
-from agno.agent import Agent
-from quantcell.core.agent import streaming
-from quantcell.utils.model import get_model_for_agent
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
+from quantcell.agents.utils.langgraph_stream import stream_react_agent
+from quantcell.utils.model import get_chat_model_for_agent
 
 class MyAgent(BaseAgent):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.inner = Agent(
-            model=get_model_for_agent("my_agent"),
-            tools=[...],  # your tool functions
-            # ... other configuration
+        self.graph = create_react_agent(
+            get_chat_model_for_agent("my_agent"),
+            [...],  # your tool functions
+            prompt="Your agent instructions here.",
+            checkpointer=InMemorySaver(),
         )
-    
+
     async def stream(self, query, conversation_id, task_id, dependencies=None):
-        # Stream responses from the inner agent
-        response_stream = self.inner.arun(
-            query,
-            stream=True,
-            stream_intermediate_steps=True,
-            session_id=conversation_id,
-        )
-        
-        # Process and forward events from the inner agent
-        async for event in response_stream:
-            if event.event == "RunContent":
-                # Emit message chunks as they arrive
-                yield streaming.message_chunk(event.content)
-            
-            elif event.event == "ToolCallStarted":
-                # Notify UI that a tool is being called
-                yield streaming.tool_call_started(
-                    event.tool.tool_call_id, 
-                    event.tool.tool_name
-                )
-            
-            elif event.event == "ToolCallCompleted":
-                # Send tool results back to UI
-                yield streaming.tool_call_completed(
-                    event.tool.result,
-                    event.tool.tool_call_id,
-                    event.tool.tool_name
-                )
-        
-        # Signal completion
-        yield streaming.done()
+        # stream_react_agent maps the LangGraph event stream onto QuantCell's
+        # StreamResponse contract: message chunks, tool_call_started/completed,
+        # and a final done() — the UI renders each appropriately.
+        config = {"configurable": {"thread_id": conversation_id}}
+        async for response in stream_react_agent(
+            self.graph, [HumanMessage(content=query)], config
+        ):
+            yield response
 ```
 
+The shared adapter (`quantcell/agents/utils/langgraph_stream.py`) does the event mapping once for every ReAct-style agent, so custom agents only need the two pieces above: build a graph, stream it.
+
 > [!TIP]
-> Refer to [Running Agents - Agno](https://docs.agno.com/concepts/agents/running-agents) for details
+> Refer to the [LangGraph streaming docs](https://docs.langchain.com/oss/python/langgraph/streaming) for what the underlying event stream contains.
 
 > [!TIP]
 > The UI automatically renders different event types appropriately - messages as text, tool calls with icons, etc. See the complete Research Agent implementation in `python/quantcell/agents/research_agent/core.py`.

@@ -16,9 +16,12 @@ QuantCell is a local-first, multi-agent platform for financial research and trad
 - **Strategy Agents** — grid and AI-prompt-driven trading strategies, executed live or in paper mode behind the same interface
 
 ### Architecture Highlights
+- **LangGraph agents** — every LLM agent is a LangGraph state machine: the planner pauses with native `interrupt()` for human-in-the-loop approval and resumes exactly where it stopped, research/news run as ReAct tool loops, and each conversation gets checkpointed memory
 - **Agent2Agent (A2A) protocol** — every agent runs as an independent service behind Google's A2A protocol, making agents framework-agnostic and hot-swappable
-- **Async orchestration core** — an LLM planner with human-in-the-loop approval gates, hallucination-guarded plan validation against a live agent registry, and an idempotent SSE streaming pipeline that keeps long-running tasks alive across client disconnects
+- **Async orchestration core** — an LLM planner with human-in-the-loop approval gates, hallucination-guarded plan validation against a live agent registry, event-driven task monitoring, and an idempotent SSE streaming pipeline that keeps long-running tasks alive across client disconnects
 - **Local-first storage** — SQLite for conversations and tasks, LanceDB for vector search, all in your system application directory
+
+See [docs/CORE_ARCHITECTURE.md](./docs/CORE_ARCHITECTURE.md) for the full design.
 
 ### Trading
 - **Supported exchanges:** Binance (USDT-M futures) and Coinbase, routed through a unified ccxt execution interface with built-in guardrails
