@@ -20,9 +20,9 @@
 
 ### Task 1: Add langgraph dependency
 
-- [ ] **Step 1:** `cd python && uv add langgraph`
-- [ ] **Step 2:** `uv run python -c "from langgraph.graph import StateGraph; from langgraph.checkpoint.memory import InMemorySaver; print('ok')"`
-- [ ] **Step 3:** Commit: `git add pyproject.toml uv.lock && git commit -m "feat: add langgraph dependency"`
+- [x] **Step 1:** `cd python && uv add langgraph`
+- [x] **Step 2:** `uv run python -c "from langgraph.graph import StateGraph; from langgraph.checkpoint.memory import InMemorySaver; print('ok')"`
+- [x] **Step 3:** Commit: `git add pyproject.toml uv.lock && git commit -m "feat: add langgraph dependency"`
 
 ### Task 2: Rewrite SuperAgent core on LangGraph (TDD)
 
@@ -35,7 +35,7 @@
 - Consumes: `quantcell.utils.model.get_chat_model_for_agent("super_agent")`, `SUPER_AGENT_INSTRUCTION`, `SUPER_AGENT_EXPECTED_OUTPUT`.
 - Produces: unchanged `SuperAgent` public API; internal `_get_or_init_graph()` returning compiled graph or None; `_parse_outcome(text) -> SuperAgentOutcome`.
 
-- [ ] **Step 1:** Write new tests (fake chat model via `GenericFakeChatModel` subclass capturing prompts; monkeypatch `super_agent_mod.model_utils_mod.get_chat_model_for_agent`):
+- [x] **Step 1:** Write new tests (fake chat model via `GenericFakeChatModel` subclass capturing prompts; monkeypatch `super_agent_mod.model_utils_mod.get_chat_model_for_agent`):
   1. ANSWER path: JSON reply → yields str chunk(s) then `SuperAgentOutcome(decision=ANSWER, answer_content=...)`
   2. HANDOFF path: enriched_query preserved
   3. Malformed reply → ANSWER outcome containing "malformed"
@@ -43,13 +43,13 @@
   5. Conversation memory: second `run()` on same conversation_id sees prior Human+AI messages in the prompt
   6. Model change rebuilds graph; same model reuses graph
   7. Keep prompts-non-empty test
-- [ ] **Step 2:** Run → FAIL (old implementation).
-- [ ] **Step 3:** Implement the LangGraph rewrite per Architecture.
-- [ ] **Step 4:** `uv run pytest quantcell/core/super_agent -q` → PASS.
-- [ ] **Step 5:** Commit: `git commit -am "feat: migrate super agent to langgraph"`
+- [x] **Step 2:** Run → FAIL (old implementation).
+- [x] **Step 3:** Implement the LangGraph rewrite per Architecture.
+- [x] **Step 4:** `uv run pytest quantcell/core/super_agent -q` → PASS.
+- [x] **Step 5:** Commit: `git commit -am "feat: migrate super agent to langgraph"`
 
 ### Task 3: Full verification + push
 
-- [ ] **Step 1:** `uv run pytest -q` full suite → green (orchestrator/e2e tests unchanged).
-- [ ] **Step 2:** `uv run python -c "import quantcell.server.main"` → clean.
-- [ ] **Step 3:** `git push`
+- [x] **Step 1:** `uv run pytest -q` full suite → green (orchestrator/e2e tests unchanged).
+- [x] **Step 2:** `uv run python -c "import quantcell.server.main"` → clean.
+- [x] **Step 3:** `git push`

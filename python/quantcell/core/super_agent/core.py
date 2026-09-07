@@ -1,18 +1,34 @@
-import asyncio
-from enum import Enum
-from typing import AsyncIterator, Optional
+"""LangGraph-based Super Agent.
 
-from agno.agent import Agent
-from agno.db.in_memory import InMemoryDb
+The Super Agent triages user input before planning: it either answers simple
+requests directly or hands off an enriched query to the Planner. It is a
+single-node LangGraph whose state is checkpointed per conversation, so each
+conversation keeps its own chat history (thread_id = conversation_id).
+
+The public contract is frozen for the orchestrator:
+`run(user_input)` yields zero or more `str` chunks (streamed model output,
+surfaced by the orchestrator as reasoning) followed by exactly one
+`SuperAgentOutcome`.
+"""
+
+import json
+import re
+from enum import Enum
+from typing import Annotated, AsyncIterator, Optional, TypedDict
+
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 from loguru import logger
 from pydantic import BaseModel, Field
 
 import quantcell.utils.model as model_utils_mod
 from quantcell.core.super_agent.prompts import (
+    SUPER_AGENT_EXPECTED_OUTPUT,
     SUPER_AGENT_INSTRUCTION,
 )
 from quantcell.core.types import UserInput
-from quantcell.utils.env import agent_debug_mode_enabled
 
 
 class SuperAgentDecision(str, Enum):
@@ -32,153 +48,141 @@ class SuperAgentOutcome(BaseModel):
     reason: Optional[str] = Field(None, description="Brief rationale for the decision")
 
 
-class SuperAgent:
-    """Lightweight Super Agent that triages user intent before planning.
+class TriageState(TypedDict):
+    """Graph state: rolling chat history plus the parsed triage outcome."""
 
-    Minimal stub implementation: returns HANDOFF_TO_PLANNER immediately.
-    Future versions can stream content, ask for user input via callback,
-    or directly produce tasks/plans.
+    messages: Annotated[list[BaseMessage], add_messages]
+    outcome: Optional[SuperAgentOutcome]
+
+
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+
+
+def _parse_outcome(text: str, model_description: str) -> SuperAgentOutcome:
+    """Parse the model reply into a SuperAgentOutcome.
+
+    Malformed output degrades to an ANSWER outcome describing the problem, so
+    the orchestrator always receives a well-typed decision.
     """
+    cleaned = _CODE_FENCE_RE.sub("", text.strip()).strip()
+    try:
+        return SuperAgentOutcome.model_validate_json(cleaned)
+    except Exception:
+        pass
+    # Some models wrap JSON in prose; salvage the outermost object if present.
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return SuperAgentOutcome.model_validate(
+                json.loads(cleaned[start : end + 1])
+            )
+        except Exception:
+            pass
+    return SuperAgentOutcome(
+        decision=SuperAgentDecision.ANSWER,
+        answer_content=(
+            f"SuperAgent produced a malformed response: `{text}`. "
+            f"Please check the capabilities of your model `{model_description}` "
+            "and try again later."
+        ),
+    )
+
+
+class SuperAgent:
+    """Triage agent: single-node LangGraph with per-conversation memory."""
 
     name: str = "QuantCellAgent"
 
     def __init__(self) -> None:
-        # Lazy initialize: avoid constructing Agent at startup
-        self.agent: Optional[Agent] = None
+        # Lazy init: building the graph requires a resolved chat model.
+        self._graph = None
+        self._model = None
+        self._model_identity: Optional[str] = None
+        # One checkpointer for the agent's lifetime; per-conversation threads.
+        self._checkpointer = InMemorySaver()
 
-    def _get_or_init_agent(self) -> Optional[Agent]:
-        """Create the underlying agent on first use.
-
-        Returns the initialized Agent or None if initialization fails.
-        """
-
-        def _build_agent(with_model) -> Agent:
-            # Disable session summaries for DashScope models
-            # DashScope requires 'json' word in messages when using response_format: json_object
-            # but agno's internal summary feature doesn't include this, causing 400 errors
-            enable_summaries = not model_utils_mod.model_should_use_json_mode(
-                with_model
-            )
-
-            return Agent(
-                model=with_model,
-                parser_model=with_model,
-                markdown=False,
-                debug_mode=agent_debug_mode_enabled(),
-                instructions=[SUPER_AGENT_INSTRUCTION],
-                # expected_output=SUPER_AGENT_EXPECTED_OUTPUT,
-                output_schema=SuperAgentOutcome,
-                use_json_mode=model_utils_mod.model_should_use_json_mode(with_model),
-                db=InMemoryDb(),
-                add_datetime_to_context=True,
-                add_history_to_context=True,
-                num_history_runs=5,
-                read_chat_history=True,
-                enable_session_summaries=enable_summaries,
-            )
-
+    def _resolve_model(self):
         try:
-            expected_model = model_utils_mod.get_model_for_agent("super_agent")
+            return model_utils_mod.get_chat_model_for_agent("super_agent")
         except Exception as e:
-            logger.warning(f"SuperAgent: failed to resolve expected model: {e}")
-            expected_model = None
+            logger.warning(f"SuperAgent: failed to resolve chat model: {e}")
+            return None
 
-        # Initialize if not present
-        if self.agent is None:
-            if expected_model is None:
-                self.agent = None
-                return None
-            try:
-                self.agent = _build_agent(expected_model)
-                return self.agent
-            except Exception as e:
-                logger.warning(f"SuperAgent: initialization failed: {e}")
-                self.agent = None
-                return None
+    def _get_or_init_graph(self):
+        """Build (or rebuild on model change) the compiled triage graph.
 
-        # If present, check consistency with current environment-configured model
-        try:
-            current = getattr(self.agent, "model", None)
-            current_pair = (
-                getattr(current, "id", None),
-                getattr(current, "provider", None),
-            )
-        except Exception:
-            current_pair = (None, None)
+        Rebuilding preserves the checkpointer, so conversation history
+        survives a model switch made through the settings UI.
+        """
+        model = self._resolve_model()
+        if model is None:
+            return self._graph  # keep serving the existing graph if any
 
-        try:
-            expected_pair = (
-                getattr(expected_model, "id", None),
-                getattr(expected_model, "provider", None),
-            )
-        except Exception:
-            expected_pair = current_pair
+        identity = model_utils_mod.describe_chat_model(model)
+        if self._graph is not None and identity == self._model_identity:
+            return self._graph
 
-        needs_restart = expected_model is not None and (current_pair != expected_pair)
-
-        if needs_restart:
+        if self._graph is not None:
             logger.info(
-                f"SuperAgent: detected model change {current_pair} -> {expected_pair}, restarting agent"
+                f"SuperAgent: model changed {self._model_identity} -> {identity}, "
+                "rebuilding graph"
             )
-            try:
-                self.agent = _build_agent(expected_model)
-            except Exception as e:
-                logger.warning(
-                    f"SuperAgent: restart failed, continuing with existing agent: {e}"
-                )
 
-        return self.agent
+        self._model = model
+        self._model_identity = identity
+
+        system_prompt = SUPER_AGENT_INSTRUCTION + "\n" + SUPER_AGENT_EXPECTED_OUTPUT
+
+        async def triage(state: TriageState) -> dict:
+            response = await model.ainvoke(
+                [SystemMessage(content=system_prompt), *state["messages"]]
+            )
+            outcome = _parse_outcome(str(response.content), identity)
+            return {"messages": [response], "outcome": outcome}
+
+        graph = StateGraph(TriageState)
+        graph.add_node("triage", triage)
+        graph.add_edge(START, "triage")
+        graph.add_edge("triage", END)
+        self._graph = graph.compile(checkpointer=self._checkpointer)
+        return self._graph
 
     async def run(
         self, user_input: UserInput
     ) -> AsyncIterator[str | SuperAgentOutcome]:
-        """Run super agent triage."""
-        await asyncio.sleep(0)
-        agent = self._get_or_init_agent()
-        if agent is None:
-            # Fallback: handoff directly to planner without super agent model
+        """Run triage: stream model output chunks, then yield the outcome."""
+        graph = self._get_or_init_graph()
+        if graph is None:
+            # Fallback: hand off directly to planner without a super agent model
             yield SuperAgentOutcome(
                 decision=SuperAgentDecision.HANDOFF_TO_PLANNER,
                 enriched_query=user_input.query,
                 reason="SuperAgent unavailable: missing model/provider configuration",
             )
+            return
 
+        config = {"configurable": {"thread_id": user_input.meta.conversation_id}}
         try:
-            model = agent.model
-            model_description = f"{model.id} (via {model.provider})"
-        except Exception:
-            model_description = "unknown model/provider"
-        try:
-            async for response in agent.arun(
-                user_input.query,
-                session_id=user_input.meta.conversation_id,
-                user_id=user_input.meta.user_id,
-                add_history_to_context=True,
-                stream=True,
+            async for chunk, _metadata in graph.astream(
+                {"messages": [HumanMessage(content=user_input.query)]},
+                config,
+                stream_mode="messages",
             ):
-                if response.content_type == "str":
-                    yield response.content
-                    continue
+                content = getattr(chunk, "content", None)
+                if isinstance(content, str) and content:
+                    yield content
 
-                # Only process non-string content as final outcome
-                final_outcome = response.content
-                if not isinstance(final_outcome, SuperAgentOutcome):
-                    answer_content = (
-                        f"SuperAgent produced a malformed response: `{final_outcome}`. "
-                        f"Please check the capabilities of your model `{model_description}` and try again later."
-                    )
-                    final_outcome = SuperAgentOutcome(
-                        decision=SuperAgentDecision.ANSWER,
-                        answer_content=answer_content,
-                    )
-
-                yield final_outcome
-
+            state = await graph.aget_state(config)
+            outcome = state.values.get("outcome")
+            if not isinstance(outcome, SuperAgentOutcome):
+                outcome = _parse_outcome(str(outcome), self._model_identity or "")
+            yield outcome
         except Exception as e:
             yield SuperAgentOutcome(
                 decision=SuperAgentDecision.ANSWER,
                 reason=(
                     f"SuperAgent encountered an error: {e}."
-                    f"Please check the capabilities of your model `{model_description}` and try again later."
+                    f"Please check the capabilities of your model "
+                    f"`{self._model_identity}` and try again later."
                 ),
             )

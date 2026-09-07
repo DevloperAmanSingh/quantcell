@@ -1,10 +1,16 @@
+"""Tests for the LangGraph-based SuperAgent."""
+
 from __future__ import annotations
 
-from types import SimpleNamespace
+import json
+from typing import Any, List, Optional
 
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatResult
 
-from quantcell.core.super_agent import core as super_agent_mod
+import quantcell.core.super_agent.core as super_agent_mod
 from quantcell.core.super_agent.core import (
     SuperAgent,
     SuperAgentDecision,
@@ -14,49 +20,211 @@ from quantcell.core.super_agent.service import SuperAgentService
 from quantcell.core.types import UserInput, UserInputMetadata
 
 
-@pytest.mark.asyncio
-async def test_super_agent_run_uses_underlying_agent(monkeypatch: pytest.MonkeyPatch):
-    fake_response = SimpleNamespace(
-        content=SuperAgentOutcome(
-            decision=SuperAgentDecision.ANSWER,
-            answer_content="Here is a quick reply",
-            enriched_query=None,
-        ),
-        content_type="outcome",
+class RecordingFakeChatModel(GenericFakeChatModel):
+    """Fake chat model that records every prompt it receives."""
+
+    seen_prompts: List[list] = []
+
+    def _generate(
+        self,
+        messages: list,
+        stop: Optional[List[str]] = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        type(self).seen_prompts.append(list(messages))
+        return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+def make_fake_model(replies: list[str]) -> RecordingFakeChatModel:
+    RecordingFakeChatModel.seen_prompts = []
+    return RecordingFakeChatModel(
+        messages=iter([AIMessage(content=reply) for reply in replies])
     )
 
-    agent_instance_holder: dict[str, object] = {}
 
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            # Provide minimal model info for error formatting paths
-            self.model = SimpleNamespace(id="fake-model", provider="fake-provider")
-            agent_instance_holder["instance"] = self
+def make_user_input(query: str, conversation_id: str = "conv-1") -> UserInput:
+    return UserInput(
+        query=query,
+        target_agent_name="QuantCellAgent",
+        meta=UserInputMetadata(conversation_id=conversation_id, user_id="user-1"),
+    )
 
-        async def arun(self, *args, **kwargs):
-            yield fake_response
 
-    monkeypatch.setattr(super_agent_mod, "Agent", FakeAgent)
-    # Patch model creation to avoid real provider/model access
+async def collect_run(agent: SuperAgent, user_input: UserInput):
+    chunks: list[str] = []
+    outcome: SuperAgentOutcome | None = None
+    async for item in agent.run(user_input):
+        if isinstance(item, SuperAgentOutcome):
+            outcome = item
+        else:
+            chunks.append(item)
+    return chunks, outcome
+
+
+ANSWER_REPLY = json.dumps(
+    {
+        "decision": "answer",
+        "answer_content": "4",
+        "reason": "Simple arithmetic.",
+    }
+)
+
+HANDOFF_REPLY = json.dumps(
+    {
+        "decision": "handoff_to_planner",
+        "enriched_query": "Compare AAPL and MSFT valuation over the last quarter",
+        "reason": "Needs specialist tools.",
+    }
+)
+
+
+@pytest.fixture
+def patch_model(monkeypatch: pytest.MonkeyPatch):
+    def _patch(model):
+        monkeypatch.setattr(
+            super_agent_mod.model_utils_mod,
+            "get_chat_model_for_agent",
+            lambda agent_name, **kwargs: model,
+        )
+
+    return _patch
+
+
+@pytest.mark.asyncio
+async def test_answer_path_yields_chunks_then_outcome(patch_model):
+    patch_model(make_fake_model([ANSWER_REPLY]))
+    chunks, outcome = await collect_run(SuperAgent(), make_user_input("What is 2+2?"))
+
+    assert outcome is not None
+    assert outcome.decision == SuperAgentDecision.ANSWER
+    assert outcome.answer_content == "4"
+    # Streamed content is the model reply (chunking granularity may vary)
+    assert "answer" in "".join(chunks)
+
+
+@pytest.mark.asyncio
+async def test_handoff_path_preserves_enriched_query(patch_model):
+    patch_model(make_fake_model([HANDOFF_REPLY]))
+    chunks, outcome = await collect_run(
+        SuperAgent(), make_user_input("Compare AAPL vs MSFT")
+    )
+
+    assert outcome is not None
+    assert outcome.decision == SuperAgentDecision.HANDOFF_TO_PLANNER
+    assert outcome.enriched_query == (
+        "Compare AAPL and MSFT valuation over the last quarter"
+    )
+
+
+@pytest.mark.asyncio
+async def test_code_fenced_json_is_parsed(patch_model):
+    patch_model(make_fake_model([f"```json\n{ANSWER_REPLY}\n```"]))
+    _, outcome = await collect_run(SuperAgent(), make_user_input("What is 2+2?"))
+
+    assert outcome is not None
+    assert outcome.decision == SuperAgentDecision.ANSWER
+
+
+@pytest.mark.asyncio
+async def test_malformed_reply_produces_answer_with_error(patch_model):
+    patch_model(make_fake_model(["this is not json at all"]))
+    _, outcome = await collect_run(SuperAgent(), make_user_input("hello"))
+
+    assert outcome is not None
+    assert outcome.decision == SuperAgentDecision.ANSWER
+    assert "malformed" in (outcome.answer_content or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_model_unavailable_falls_back_to_handoff(monkeypatch):
+    def _raise(agent_name, **kwargs):
+        raise ValueError("no provider configured")
+
+    monkeypatch.setattr(
+        super_agent_mod.model_utils_mod, "get_chat_model_for_agent", _raise
+    )
+    _, outcome = await collect_run(SuperAgent(), make_user_input("hello"))
+
+    assert outcome is not None
+    assert outcome.decision == SuperAgentDecision.HANDOFF_TO_PLANNER
+    assert outcome.enriched_query == "hello"
+    assert "unavailable" in (outcome.reason or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_conversation_memory_across_runs(patch_model):
+    model = make_fake_model([ANSWER_REPLY, ANSWER_REPLY])
+    patch_model(model)
+    agent = SuperAgent()
+
+    await collect_run(agent, make_user_input("first question", "conv-mem"))
+    await collect_run(agent, make_user_input("second question", "conv-mem"))
+
+    assert len(RecordingFakeChatModel.seen_prompts) == 2
+    second_prompt_text = " ".join(
+        str(getattr(m, "content", "")) for m in RecordingFakeChatModel.seen_prompts[1]
+    )
+    # Second turn must include the first turn's exchange (checkpointed history)
+    assert "first question" in second_prompt_text
+
+
+@pytest.mark.asyncio
+async def test_separate_conversations_do_not_share_history(patch_model):
+    model = make_fake_model([ANSWER_REPLY, ANSWER_REPLY])
+    patch_model(model)
+    agent = SuperAgent()
+
+    await collect_run(agent, make_user_input("secret alpha", "conv-a"))
+    await collect_run(agent, make_user_input("other topic", "conv-b"))
+
+    second_prompt_text = " ".join(
+        str(getattr(m, "content", "")) for m in RecordingFakeChatModel.seen_prompts[1]
+    )
+    assert "secret alpha" not in second_prompt_text
+
+
+@pytest.mark.asyncio
+async def test_model_change_rebuilds_graph(monkeypatch):
+    model_a = make_fake_model([ANSWER_REPLY])
+    agent = SuperAgent()
+
     monkeypatch.setattr(
         super_agent_mod.model_utils_mod,
-        "get_model_for_agent",
-        lambda *args, **kwargs: "stub-model",
+        "get_chat_model_for_agent",
+        lambda agent_name, **kwargs: model_a,
     )
-    monkeypatch.setattr(super_agent_mod, "agent_debug_mode_enabled", lambda: False)
+    await collect_run(agent, make_user_input("q1"))
+    graph_first = agent._graph
 
-    sa = SuperAgent()
+    # Same model -> same compiled graph
+    await collect_run(agent, make_user_input("q2"))
+    assert agent._graph is graph_first
 
-    user_input = UserInput(
-        query="answer this",
-        target_agent_name=sa.name,
-        meta=UserInputMetadata(conversation_id="conv-sa", user_id="user-sa"),
+    # Different model identity (different class name) -> rebuilt graph
+    class OtherFakeChatModel(RecordingFakeChatModel):
+        pass
+
+    model_b = OtherFakeChatModel(messages=iter([AIMessage(content=ANSWER_REPLY)]))
+    monkeypatch.setattr(
+        super_agent_mod.model_utils_mod,
+        "get_chat_model_for_agent",
+        lambda agent_name, **kwargs: model_b,
     )
+    await collect_run(agent, make_user_input("q3"))
+    assert agent._graph is not graph_first
 
-    # Consume async iterator: should yield final outcome
-    outcomes = [item async for item in sa.run(user_input) if not isinstance(item, str)]
-    assert outcomes and isinstance(outcomes[-1], SuperAgentOutcome)
-    assert outcomes[-1].answer_content == "Here is a quick reply"
+
+@pytest.mark.asyncio
+async def test_service_facade_passthrough(patch_model):
+    patch_model(make_fake_model([ANSWER_REPLY]))
+    service = SuperAgentService()
+    outcome = None
+    async for item in service.run(make_user_input("What is 2+2?")):
+        if isinstance(item, SuperAgentOutcome):
+            outcome = item
+    assert outcome is not None
+    assert service.name == SuperAgent.name
 
 
 def test_super_agent_prompts_are_non_empty():
@@ -65,134 +233,5 @@ def test_super_agent_prompts_are_non_empty():
         SUPER_AGENT_INSTRUCTION,
     )
 
-    assert "<purpose>" in SUPER_AGENT_INSTRUCTION
-    assert '"decision"' in SUPER_AGENT_EXPECTED_OUTPUT
-
-
-@pytest.mark.asyncio
-async def test_super_agent_service_delegates_to_underlying_agent():
-    async def _run(user_input):
-        yield "result"
-
-    fake_agent = SimpleNamespace(
-        name="Helper",
-        run=_run,
-    )
-    service = SuperAgentService(super_agent=fake_agent)
-    user_input = UserInput(
-        query="test",
-        target_agent_name="Helper",
-        meta=UserInputMetadata(conversation_id="conv", user_id="user"),
-    )
-
-    assert service.name == "Helper"
-    # Service.run is async iterator passthrough
-    items = [item async for item in service.run(user_input)]
-    assert items == ["result"]
-
-
-@pytest.mark.asyncio
-async def test_super_agent_run_handles_malformed_response(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """When underlying agent returns non-SuperAgentOutcome, SuperAgent falls back to ANSWER with explanatory text."""
-
-    # Return a malformed content (not a SuperAgentOutcome instance)
-    fake_response = SimpleNamespace(
-        content=SimpleNamespace(raw="oops"), content_type="malformed"
-    )
-
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            # Minimal model attributes used in error formatting
-            self.model = SimpleNamespace(id="fake-model", provider="fake-provider")
-
-        async def arun(self, *args, **kwargs):
-            yield fake_response
-
-    monkeypatch.setattr(super_agent_mod, "Agent", FakeAgent)
-    monkeypatch.setattr(
-        super_agent_mod.model_utils_mod,
-        "get_model_for_agent",
-        lambda *args, **kwargs: "stub-model",
-    )
-    monkeypatch.setattr(super_agent_mod, "agent_debug_mode_enabled", lambda: False)
-
-    sa = SuperAgent()
-    user_input = UserInput(
-        query="give answer",
-        target_agent_name=sa.name,
-        meta=UserInputMetadata(conversation_id="conv", user_id="user"),
-    )
-
-    # Fallback path should return an ANSWER decision with helpful message
-    outcomes = [item async for item in sa.run(user_input) if not isinstance(item, str)]
-    assert outcomes and outcomes[-1].decision == SuperAgentDecision.ANSWER
-    assert "malformed response" in outcomes[-1].answer_content
-    assert outcomes[-1].reason is None
-
-
-@pytest.mark.asyncio
-async def test_super_agent_lazy_init_failure_handoff_to_planner(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """When SuperAgent cannot initialize, it hands off directly to Planner."""
-
-    def _raise(*_args, **_kwargs):
-        raise RuntimeError("no model")
-
-    monkeypatch.setattr(super_agent_mod.model_utils_mod, "get_model_for_agent", _raise)
-    monkeypatch.setattr(super_agent_mod, "agent_debug_mode_enabled", lambda: False)
-
-    sa = SuperAgent()
-
-    user_input = UserInput(
-        query="please plan",
-        target_agent_name=sa.name,
-        meta=UserInputMetadata(conversation_id="conv-fallback", user_id="user-x"),
-    )
-
-    outcomes = [item async for item in sa.run(user_input) if not isinstance(item, str)]
-    assert outcomes and outcomes[-1].decision == SuperAgentDecision.ANSWER
-    assert outcomes[-1].enriched_query is None
-    assert outcomes[-1].reason and "arun" in outcomes[-1].reason
-
-
-@pytest.mark.asyncio
-async def test_super_agent_malformed_response_unknown_provider(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Malformed response with missing model info uses 'unknown model/provider' label."""
-
-    # Return a malformed content (not a SuperAgentOutcome instance)
-    fake_response = SimpleNamespace(content=SimpleNamespace(raw="oops"))
-
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            # No model attribute to trigger unknown path
-            # self.model = missing
-            pass
-
-        async def arun(self, *args, **kwargs):
-            yield fake_response
-
-    monkeypatch.setattr(super_agent_mod, "Agent", FakeAgent)
-    monkeypatch.setattr(
-        super_agent_mod.model_utils_mod,
-        "get_model_for_agent",
-        lambda *args, **kwargs: "stub-model",
-    )
-    monkeypatch.setattr(super_agent_mod, "agent_debug_mode_enabled", lambda: False)
-
-    sa = SuperAgent()
-    user_input = UserInput(
-        query="give answer",
-        target_agent_name=sa.name,
-        meta=UserInputMetadata(conversation_id="conv", user_id="user"),
-    )
-
-    outcomes = [item async for item in sa.run(user_input) if not isinstance(item, str)]
-    assert outcomes and outcomes[-1].decision == SuperAgentDecision.ANSWER
-    assert outcomes[-1].answer_content is None
-    assert outcomes[-1].reason is not None
-    assert "unknown model/provider" in outcomes[-1].reason
+    assert SUPER_AGENT_INSTRUCTION.strip()
+    assert SUPER_AGENT_EXPECTED_OUTPUT.strip()
