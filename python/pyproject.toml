@@ -35,6 +35,7 @@ dependencies = [
     "langchain-openai>=1.6.0",
     "langchain-google-genai>=4.4.0",
     "langchain-ollama>=1.1.0",
+    "langgraph>=1.2.11",
 ]
 
 [project.optional-dependencies]
