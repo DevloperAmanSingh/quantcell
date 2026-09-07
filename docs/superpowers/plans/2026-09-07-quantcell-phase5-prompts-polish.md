@@ -16,17 +16,17 @@
 ---
 
 ### Task 1: Prompt rewrites
-- [ ] `core/super_agent/prompts.py` (instruction + expected output)
-- [ ] `core/plan/prompts.py` (instruction + expected output, examples restructured)
-- [ ] `agents/research_agent/prompts.py`
-- [ ] `agents/news_agent/prompts.py`
-- [ ] `agents/common/trading/decision/prompt_based/system_prompt.py` + grid advisor SYSTEM_PROMPT (reword prose, preserve every constraint literally)
-- [ ] `uv run pytest -q` green; commit `refactor: rewrite agent prompts in quantcell voice`
+- [x] `core/super_agent/prompts.py` (instruction + expected output)
+- [x] `core/plan/prompts.py` (instruction + expected output, examples restructured)
+- [x] `agents/research_agent/prompts.py`
+- [x] `agents/news_agent/prompts.py`
+- [x] `agents/common/trading/decision/prompt_based/system_prompt.py` + grid advisor SYSTEM_PROMPT (reword prose, preserve every constraint literally)
+- [x] `uv run pytest -q` green; commit `refactor: rewrite agent prompts in quantcell voice`
 
 ### Task 2: Event-driven planner monitoring
-- [ ] Orchestrator: `_create_context_aware_callback` returns (callback, event); monitor/continue use `asyncio.wait` on {planning_task, event.wait()} with no sleep loop; repeated prompts clear + re-await the event.
-- [ ] Remove dead commented-out registry block in `core/agent/decorator.py`.
-- [ ] `uv run pytest -q` green (orchestrator tests unchanged); commit `refactor: event-driven planner monitoring in orchestrator`
+- [x] Orchestrator: `_create_context_aware_callback` returns (callback, event); monitor/continue use `asyncio.wait` on {planning_task, event.wait()} with no sleep loop; repeated prompts clear + re-await the event.
+- [x] Remove dead commented-out registry block in `core/agent/decorator.py`.
+- [x] `uv run pytest -q` green (orchestrator tests unchanged); commit `refactor: event-driven planner monitoring in orchestrator`
 
 ### Task 3: Push
-- [ ] `git push`; mark plan complete.
+- [x] `git push`; mark plan complete.
