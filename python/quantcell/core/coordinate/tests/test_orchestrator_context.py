@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from quantcell.core.coordinate.orchestrator import (
-    ASYNC_SLEEP_INTERVAL,
     DEFAULT_CONTEXT_TIMEOUT_SECONDS,
     AgentOrchestrator,
     ExecutionContext,
@@ -211,7 +210,7 @@ async def test_cleanup_expired_contexts(orchestrator):
     context.created_at -= DEFAULT_CONTEXT_TIMEOUT_SECONDS + 1
     orch._execution_contexts["conv"] = context
 
-    await orch._cleanup_expired_contexts(max_age_seconds=ASYNC_SLEEP_INTERVAL)
+    await orch._cleanup_expired_contexts(max_age_seconds=0.1)
 
     assert planning_future.cancelled()
     assert "conv" in bundle.conversation_service.activated

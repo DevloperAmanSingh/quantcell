@@ -25,7 +25,7 @@ from .services import AgentServiceBundle
 
 # Constants for configuration
 DEFAULT_CONTEXT_TIMEOUT_SECONDS = 3600  # 1 hour
-ASYNC_SLEEP_INTERVAL = 0.1  # 100ms
+PENDING_INPUT_EVENT = "pending_input_event"
 
 
 class ExecutionContext:
@@ -386,7 +386,9 @@ class AgentOrchestrator:
             conversation_id,
             thread_id,
         )
-        context_aware_callback = self._create_context_aware_callback(conversation_id)
+        context_aware_callback, pending_event = self._create_context_aware_callback(
+            conversation_id
+        )
         planning_task = self.plan_service.start_planning_task(
             user_input, thread_id, context_aware_callback
         )
@@ -397,24 +399,26 @@ class AgentOrchestrator:
 
         # Monitor planning progress
         async for response in self._monitor_planning_task(
-            planning_task, thread_id, user_input, context_aware_callback
+            planning_task, thread_id, user_input, context_aware_callback, pending_event
         ):
             yield response
 
     def _create_context_aware_callback(self, conversation_id: str):
-        """Return an async callback that tags UserInputRequest objects with the
-        conversation_id and forwards them to the orchestrator's handler.
+        """Return (callback, pending_event) for planner-driven user input.
 
-        The planner receives this callback and can call it whenever it needs
-        to request additional information from the end-user; the callback
-        ensures the request is associated with the correct conversation.
+        The callback tags UserInputRequest objects with the conversation_id,
+        registers them with the plan service, and sets `pending_event` so the
+        monitor wakes immediately (event-driven, no polling). Returns the
+        event alongside the callback so monitors can await it.
         """
+        pending_event = asyncio.Event()
 
         async def context_aware_handle(request):
             request.conversation_id = conversation_id
             self.plan_service.register_user_input(conversation_id, request)
+            pending_event.set()
 
-        return context_aware_handle
+        return context_aware_handle, pending_event
 
     async def _monitor_planning_task(
         self,
@@ -422,14 +426,15 @@ class AgentOrchestrator:
         thread_id: str,
         user_input: UserInput,
         callback,
+        pending_event: asyncio.Event,
     ) -> AsyncGenerator[BaseResponse, None]:
         """Monitor an in-progress planning task and handle interruptions.
 
-        While the planner is running this loop watches for pending user input
-        requests. If the planner pauses for clarification, the method records
-        the planning context and yields a `plan_require_user_input` response
-        to the caller. When planning completes, the produced `ExecutionPlan`
-        is executed.
+        Event-driven: waits on {planning task, pending-input event} and wakes
+        the moment either fires — no polling. If the planner pauses for
+        clarification, the method records the planning context and yields a
+        `plan_require_user_input` response. When planning completes, the
+        produced `ExecutionPlan` is executed.
         """
         conversation_id = user_input.meta.conversation_id
         user_id = user_input.meta.user_id
@@ -448,36 +453,36 @@ class AgentOrchestrator:
             )
         )
 
-        # Wait for planning completion or user input request
+        # Wait for planning completion or a user input request (event-driven)
         logger.info(
             "_monitor_planning_task: monitoring planning task for conversation {}",
             conversation_id,
         )
-        while not planning_task.done():
-            if self.plan_service.has_pending_request(conversation_id):
-                # Save planning context
-                context = ExecutionContext(
-                    "planning", conversation_id, thread_id, user_id
-                )
-                context.add_metadata(
-                    original_user_input=user_input,
-                    planning_task=planning_task,
-                    planner_callback=callback,
-                )
-                self._execution_contexts[conversation_id] = context
+        if not self.plan_service.has_pending_request(conversation_id):
+            await self._wait_planning_or_input(planning_task, pending_event)
+        if not planning_task.done() and self.plan_service.has_pending_request(
+            conversation_id
+        ):
+            # Save planning context
+            context = ExecutionContext("planning", conversation_id, thread_id, user_id)
+            context.add_metadata(
+                original_user_input=user_input,
+                planning_task=planning_task,
+                planner_callback=callback,
+            )
+            context.add_metadata(**{PENDING_INPUT_EVENT: pending_event})
+            self._execution_contexts[conversation_id] = context
 
-                # Update conversation status and send user input request
-                await self.conversation_service.require_user_input(conversation_id)
-                prompt = self.plan_service.get_request_prompt(conversation_id) or ""
-                response = self.event_service.factory.plan_require_user_input(
-                    conversation_id,
-                    thread_id,
-                    prompt,
-                )
-                yield await self.event_service.emit(response)
-                return
-
-            await asyncio.sleep(ASYNC_SLEEP_INTERVAL)
+            # Update conversation status and send user input request
+            await self.conversation_service.require_user_input(conversation_id)
+            prompt = self.plan_service.get_request_prompt(conversation_id) or ""
+            response = self.event_service.factory.plan_require_user_input(
+                conversation_id,
+                thread_id,
+                prompt,
+            )
+            yield await self.event_service.emit(response)
+            return
 
         logger.info(
             "_monitor_planning_task: planning completed for conversation {}; executing plan",
@@ -508,6 +513,23 @@ class AgentOrchestrator:
             await self._maybe_set_conversation_title(conversation_id, first_title)
         async for response in self.task_executor.execute_plan(plan, thread_id):
             yield response
+
+    @staticmethod
+    async def _wait_planning_or_input(
+        planning_task: asyncio.Task, pending_event: asyncio.Event
+    ) -> None:
+        """Block until the planner finishes or requests user input."""
+        if planning_task.done():
+            return
+        event_waiter = asyncio.create_task(pending_event.wait())
+        try:
+            await asyncio.wait(
+                {planning_task, event_waiter},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            if not event_waiter.done():
+                event_waiter.cancel()
 
     def _validate_execution_context(
         self, context: ExecutionContext, user_id: str
@@ -551,20 +573,25 @@ class AgentOrchestrator:
             await self._cancel_execution(conversation_id)
             return
 
-        # Continue monitoring planning task
-        while not planning_task.done():
-            if self.plan_service.has_pending_request(conversation_id):
-                # Still need more user input, send request
-                prompt = self.plan_service.get_request_prompt(conversation_id) or ""
-                # Ensure conversation is set to require user input again for repeated prompts
-                await self.conversation_service.require_user_input(conversation_id)
-                response = self.event_service.factory.plan_require_user_input(
-                    conversation_id, thread_id, prompt
-                )
-                yield await self.event_service.emit(response)
-                return
-
-            await asyncio.sleep(ASYNC_SLEEP_INTERVAL)
+        # Continue monitoring the planning task (event-driven)
+        pending_event: asyncio.Event = context.get_metadata(
+            PENDING_INPUT_EVENT
+        ) or asyncio.Event()
+        pending_event.clear()  # previous request was answered; await the next one
+        if not self.plan_service.has_pending_request(conversation_id):
+            await self._wait_planning_or_input(planning_task, pending_event)
+        if not planning_task.done() and self.plan_service.has_pending_request(
+            conversation_id
+        ):
+            # Still need more user input, send request
+            prompt = self.plan_service.get_request_prompt(conversation_id) or ""
+            # Ensure conversation is set to require user input again for repeated prompts
+            await self.conversation_service.require_user_input(conversation_id)
+            response = self.event_service.factory.plan_require_user_input(
+                conversation_id, thread_id, prompt
+            )
+            yield await self.event_service.emit(response)
+            return
 
         # Planning completed, execute plan and clean up context
         plan = await planning_task

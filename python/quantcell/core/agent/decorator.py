@@ -108,15 +108,6 @@ def _serve(agent_card: AgentCard):
         DecoratedAgent.__name__ = cls.__name__
         DecoratedAgent.__qualname__ = cls.__qualname__
 
-        # Register to registry
-        # try:
-        #     registry.register(DecoratedAgent, agent_name)
-        # except ImportError:
-        #     # Registry not available, skip registration
-        #     logger.warning(
-        #         f"Agent registry not available, skipping registration for {DecoratedAgent.__name__}"
-        #     )
-
         return DecoratedAgent
 
     return decorator
