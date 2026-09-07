@@ -404,7 +404,7 @@ docs: update installation instructions
    ```
 
 6. **Create a Pull Request**
-   - Go to the [QuantCell repository](https://github.com/QuantCell-ai/quantcell)
+   - Go to the [QuantCell repository](https://github.com/DevloperAmanSingh/quantcell)
    - Click "New Pull Request"
    - Select your branch
    - Fill out the PR template
@@ -428,7 +428,6 @@ docs: update installation instructions
 
 ## 🔥 QuantCell Dev Program
 
-Build with us & get rewarded. Land 3 commits in the last month, and we will contact you via our official email (public@quantcell.ai).
 
 You will get:
 
@@ -441,8 +440,6 @@ You will get:
 
 If you have questions:
 
-- 💬 Join our [Discord](https://discord.com/invite/84Kex3GGAh)
-- 📧 Email us at [public@quantcell.ai](mailto:public@quantcell.ai)
 - 🐛 Open an issue for bug reports
 
 ---

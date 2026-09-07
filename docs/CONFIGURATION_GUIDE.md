@@ -262,7 +262,7 @@ embedding:
 
 # Provider-specific configuration
 extra_headers:
-  HTTP-Referer: "https://quantcell.ai"
+  HTTP-Referer: "https://github.com/DevloperAmanSingh/quantcell"
   X-Title: "QuantCell"
 ```
 
@@ -624,5 +624,4 @@ model = create_model_with_provider("openrouter", "anthropic/claude-3.5-sonnet")
 ## Support
 
 For configuration issues or questions:
-- Ask on [Discord Community](https://discord.com/invite/84Kex3GGAh)
 - Report bugs on [GitHub Issues](https://github.com/quantcell/quantcell/issues)

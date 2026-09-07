@@ -12,4 +12,4 @@ We patch only what we still care about—and what *you* should still be running.
 
 **Do this:**  
 → Open a public GitHub issue.  
-→ Contact us @Discord. 
+→ Or contact the repository owner via GitHub (@DevloperAmanSingh). 

@@ -504,8 +504,6 @@ AGENT_DEBUG_MODE=true
 
 If you have questions:
 
-- 💬 Join our [Discord](https://discord.com/invite/84Kex3GGAh)
-- 📧 Email us at [public@quantcell.ai](mailto:public@quantcell.ai)
 - 🐛 Open an issue for bug reports
 
 ---
