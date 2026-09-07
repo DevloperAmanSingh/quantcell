@@ -4,8 +4,11 @@ import pytest
 
 from quantcell.core.coordinate.orchestrator import AgentOrchestrator
 from quantcell.core.types import UserInput, UserInputMetadata
-import quantcell.adapters.models.factory as factory_mod
 import quantcell.utils.model as model_utils_mod
+
+
+def _no_model(*_args, **_kwargs):
+    raise ValueError("no model configured in e2e persistence test")
 
 
 @pytest.mark.asyncio
@@ -14,18 +17,10 @@ async def test_orchestrator_buffer_store_e2e(tmp_path, monkeypatch):
     # Use DATABASE_URL for tests; utils resolve_db_path will honor sqlite DSN
     monkeypatch.setenv("QUANTCELL_DATABASE_URL", f"sqlite:///{db_path}")
 
-    monkeypatch.setattr(
-        factory_mod, "create_model", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(
-        factory_mod, "create_embedder", lambda *args, **kwargs: "stub-embedder"
-    )
-    monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(
-        model_utils_mod, "create_embedder", lambda *args, **kwargs: "stub-embedder"
-    )
+    # No live model: super agent / planner must degrade gracefully and the
+    # buffer -> store path must still persist conversation items.
+    monkeypatch.setattr(model_utils_mod, "get_chat_model_for_agent", _no_model)
+    monkeypatch.setattr(model_utils_mod, "get_embeddings_for_agent", _no_model)
 
     orch = AgentOrchestrator()
 

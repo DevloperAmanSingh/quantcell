@@ -194,15 +194,15 @@ def _orchestrator(
     mock_planner: Mock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> AgentOrchestrator:
-    # Mock create_model at factory level to avoid API key validation in CI
-    import quantcell.adapters.models.factory as factory_mod
+    # Fail model resolution so no provider/API key is needed in CI; the
+    # super agent and planner degrade gracefully without a model.
+    import quantcell.utils.model as model_utils_mod
 
-    monkeypatch.setattr(
-        factory_mod, "create_model", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(
-        factory_mod, "create_embedder", lambda *args, **kwargs: "stub-embedder"
-    )
+    def _no_model(*_args, **_kwargs):
+        raise ValueError("no model configured in orchestrator tests")
+
+    monkeypatch.setattr(model_utils_mod, "get_chat_model_for_agent", _no_model)
+    monkeypatch.setattr(model_utils_mod, "get_embeddings_for_agent", _no_model)
 
     agent_connections = Mock(spec=RemoteConnections)
     agent_connections.get_client = AsyncMock()

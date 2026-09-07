@@ -1,5 +1,5 @@
 # Agno Framework Injected Constants
-# Reference: https://docs.agno.com/
+# Metadata keys shared between the orchestrator and remote agents.
 
 # Key for tracking business context, request types, and operational information
 # Used for monitoring, analytics, and debugging purposes
