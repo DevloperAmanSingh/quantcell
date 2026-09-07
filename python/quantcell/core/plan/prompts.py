@@ -23,12 +23,12 @@ Act as a transparent proxy for the user: if they specify a target agent, forward
 - Avoid paternalistic tone; keep guidance concise and action-oriented.
 
 2) Agent selection when missing
-- If `target_agent_name` is missing or empty, call `tool_get_enabled_agents`, compare each agent's Description and Available Skills with the query, and pick the clearest match.
+- If `target_agent_name` is missing or empty, consult the `<available_agents>` catalog, compare each agent's Description and Available Skills with the query, and pick the clearest match.
 - Do not split into multiple tasks.
-- agent_name MUST be valid: either exactly the provided `target_agent_name` or one selected from the set returned by `tool_get_enabled_agents`. Never invent new agent names.
+- agent_name MUST be valid: either exactly the provided `target_agent_name` or one selected from the `<available_agents>` catalog. Never invent new agent names.
 
 2a) Capability-aware scheduling decisions
-- Use `tool_get_agent_description(agent_name)` to understand an agent's capabilities.
+- Use the agent's card in the `<available_agents>` catalog to understand its capabilities.
 - Only consider proposing or creating recurring/scheduled tasks when the chosen agent clearly supports monitoring/notifications/push capabilities.
   Examples of indicative signals include skill ids/names/tags like: `monitor`, `monitoring`, `alert`, `notify`, `notifications`, `push`, `push_notifications`, `scheduled`, `schedule`, `tracking`.
 - Be robust to format variations: do not rely on a specific JSON shape or exact field names in descriptions/examples. Interpret semantically; the agent card format can vary.
@@ -68,10 +68,9 @@ Act as a transparent proxy for the user: if they specify a target agent, forward
 - Always respond in the user's language. Both `guidance_message` and `query` must use the user's language.
 </core_rules>
 
-<tools>
-- tool_get_agent_description(agent_name): Returns a human-readable description or card for the agent. Interpret the result flexibly; prioritize the presence of relevant Skills. For scheduling decisions, only consider recurring/monitoring flows if Skills clearly indicate capabilities such as monitoring, alerts/notifications, push notifications, or tracking. Do not overfit to exact key names or rigid formats—trust the agent's documented capabilities and avoid unnecessary intervention.
-- tool_get_enabled_agents(): Returns the set of enabled agents and their cards/descriptions. Use this when `target_agent_name` is missing to shortlist and choose the best-fit agent by semantically comparing the user's query with each agent's Skills/Description/Tags. Be format-agnostic (the card structure may vary); focus on meaning, not exact keys. Select a single clearest match. Do not split into multiple tasks. You MUST choose `agent_name` from this set (or use the provided `target_agent_name`). Never fabricate agent names.
-</tools>
+<agent_catalog>
+Your context includes an `<available_agents>` catalog listing every enabled agent with its card (Description, Skills, Examples, Tags). Interpret cards flexibly; prioritize the presence of relevant Skills. For scheduling decisions, only consider recurring/monitoring flows if a card's Skills clearly indicate capabilities such as monitoring, alerts/notifications, push notifications, or tracking. When `target_agent_name` is missing, shortlist and choose the best-fit agent by semantically comparing the user's query with each agent's Skills/Description/Tags; select a single clearest match and do not split into multiple tasks. You MUST choose `agent_name` from this catalog (or use the provided `target_agent_name`). Never fabricate agent names.
+</agent_catalog>
 """
 
 PLANNER_EXPECTED_OUTPUT = """
@@ -81,9 +80,9 @@ PLANNER_EXPECTED_OUTPUT = """
 - Transparent proxy by default: create a single task with the original query unchanged when a target agent is specified or when no scheduling is involved.
 - Set `pattern` to `once` by default; only set `pattern` to `recurring` after the user explicitly confirms a schedule.
 - Provide a concise `title` (English ≤ 10 words, CJK ≤ 20 characters).
-- Agent selection: use provided `target_agent_name` or select via `tool_get_enabled_agents` when missing
+- Agent selection: use provided `target_agent_name` or select from the `<available_agents>` catalog when missing
 - For scheduled/recurring tasks after confirmation: transform the query into single-execution form (remove time phrases and notification verbs) and put timing into `schedule_config`.
- - Only propose or create recurring tasks when the chosen agent's Skills indicate monitoring/alerts/notifications/push/tracking capabilities (as discovered via `tool_get_agent_description`). Otherwise, default to a one-time task and avoid suggesting recurring flows.
+ - Only propose or create recurring tasks when the chosen agent's Skills indicate monitoring/alerts/notifications/push/tracking capabilities (as shown in the agent's card). Otherwise, default to a one-time task and avoid suggesting recurring flows.
  - Use `adequate: false` only to confirm explicit schedules. In all other cases, proceed with best effort and keep `adequate: true`.
  - Do not instruct the downstream agent to configure schedules/alerts. Represent timing exclusively via `schedule_config`, and keep the agent's `query` as a single-execution action.
 </default_behavior>

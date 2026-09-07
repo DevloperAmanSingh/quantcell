@@ -1,22 +1,37 @@
 """Planner: create execution plans from user input.
 
-This module implements the ExecutionPlanner which uses an LLM-based
-planning agent to convert a user request into a structured
-`ExecutionPlan` consisting of `Task` objects. The planner supports
-Human-in-the-Loop flows by emitting `UserInputRequest` objects (backed by
-an asyncio.Event) when the planner requires clarification.
+LangGraph-based ExecutionPlanner. A three-node graph turns a user request
+into a validated `PlannerResponse`:
 
-The planner is intentionally thin: it delegates reasoning to an AI agent
-and performs JSON parsing/validation of the planner's output.
+    generate -> validate -> (END | clarify -> generate)
+
+- `generate` prompts the chat model with the planner instruction, a live
+  catalog of planable agent cards, and the JSON output contract, then parses
+  the reply into `PlannerResponse`.
+- `validate` is the hallucination guard: any task naming an unregistered
+  agent turns the response into guidance instead of an executable plan.
+- `clarify` implements human-in-the-loop via LangGraph `interrupt()`: when
+  the planner needs confirmation (e.g. schedules), the graph pauses, the
+  orchestrator surfaces the prompt through `UserInputRequest`, and the
+  user's answer resumes the graph with `Command(resume=...)`. Rounds are
+  capped so an indecisive model cannot loop forever.
+
+The public contract (`create_plan(user_input, user_input_callback,
+thread_id)`) is unchanged from the Agno implementation, so PlanService and
+the orchestrator are untouched.
 """
 
 import asyncio
+import json
+import re
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Annotated, Callable, List, Optional, Tuple, TypedDict
 
-from a2a.types import AgentCard
-from agno.agent import Agent
-from agno.db.in_memory import InMemoryDb
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.types import Command, interrupt
 from loguru import logger
 
 import quantcell.utils.model as model_utils_mod
@@ -24,7 +39,6 @@ from quantcell.core.agent.connect import RemoteConnections
 from quantcell.core.task.models import Task, TaskStatus
 from quantcell.core.types import UserInput
 from quantcell.utils import generate_uuid
-from quantcell.utils.env import agent_debug_mode_enabled
 from quantcell.utils.uuid import generate_conversation_id
 
 from .models import ExecutionPlan, PlannerInput, PlannerResponse
@@ -32,6 +46,10 @@ from .prompts import (
     PLANNER_EXPECTED_OUTPUT,
     PLANNER_INSTRUCTION,
 )
+
+MAX_CLARIFICATION_ROUNDS = 3
+
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
 class UserInputRequest:
@@ -53,32 +71,59 @@ class UserInputRequest:
         self.event = asyncio.Event()
 
     async def wait_for_response(self) -> str:
-        """Block until a response is provided and return it.
-
-        This is an awaitable helper designed to be used by planner code that
-        wants to pause execution until the external caller supplies the
-        requested value via `provide_response`.
-        """
+        """Block until a response is provided and return it."""
         await self.event.wait()
         return self.response
 
     def provide_response(self, response: str):
-        """Supply the user's response and wake any waiter.
-
-        Args:
-            response: The text provided by the user to satisfy the prompt.
-        """
+        """Supply the user's response and wake any waiter."""
         self.response = response
         self.event.set()
+
+
+class PlannerState(TypedDict):
+    """Graph state for one planning run (thread_id = conversation_id)."""
+
+    messages: Annotated[List[BaseMessage], add_messages]
+    planner_response: Optional[PlannerResponse]
+    # True when the response is final guidance that must NOT enter the
+    # clarification loop (malformed output, hallucinated agents).
+    terminal_guidance: bool
+    clarify_count: int
+
+
+def _parse_planner_response(text: str, model_description: str) -> PlannerResponse:
+    """Parse the model reply into a PlannerResponse; degrade to guidance."""
+    cleaned = _CODE_FENCE_RE.sub("", text.strip()).strip()
+    try:
+        return PlannerResponse.model_validate_json(cleaned)
+    except Exception:
+        pass
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return PlannerResponse.model_validate(json.loads(cleaned[start : end + 1]))
+        except Exception:
+            pass
+    return PlannerResponse(
+        tasks=[],
+        adequate=False,
+        reason="malformed planner output",
+        guidance_message=(
+            f"Planner produced a malformed response: `{text}`. "
+            f"Please check the capabilities of your model `{model_description}` "
+            "and try again later."
+        ),
+    )
 
 
 class ExecutionPlanner:
     """
     Creates execution plans by analyzing user input and determining appropriate agent tasks.
 
-    This planner uses AI to understand user requests and break them down into
-    executable tasks that can be handled by specific agents. It supports
-    Human-in-the-Loop interactions when additional clarification is needed.
+    Uses a LangGraph state machine with interrupt-based Human-in-the-Loop:
+    the graph pauses when clarification is needed and resumes with the
+    user's answer.
     """
 
     def __init__(
@@ -86,48 +131,130 @@ class ExecutionPlanner:
         agent_connections: RemoteConnections,
     ):
         self.agent_connections = agent_connections
-        # Lazy initialize agent to avoid startup failures when API keys are missing
-        self.agent = None
+        # Lazy graph construction: requires a resolved chat model.
+        self._graph = None
+        self._model_identity: Optional[str] = None
+        self._checkpointer = InMemorySaver()
 
-    def _get_or_init_agent(self) -> Optional[Agent]:
-        """Create the planning agent on first use.
+    # ------------------------
+    # Graph construction
+    # ------------------------
 
-        Returns the initialized Agent or None if initialization fails.
+    def _render_agent_catalog(self) -> str:
+        """Render all planable agent cards as prompt context.
+
+        Replaces the former LLM tools (`tool_get_enabled_agents`,
+        `tool_get_agent_description`): the catalog is always in context, so
+        planning needs no tool round-trips.
         """
-        if self.agent is not None:
-            return self.agent
+        cards = self.agent_connections.get_planable_agent_cards()
+        parts = ["<available_agents>"]
+        for agent_name, card in cards.items():
+            parts.append(f"<{agent_name}>")
+            parts.append(agentcard_to_prompt(card))
+            parts.append(f"</{agent_name}>")
+        parts.append("</available_agents>")
+        return "\n".join(parts)
 
+    def _resolve_model(self):
         try:
-            # Fetch model via utils module reference so tests can monkeypatch it reliably
-            model = model_utils_mod.get_model_for_agent("super_agent")
-            self.agent = Agent(
-                model=model,
-                tools=[
-                    # TODO: enable UserControlFlowTools when stable
-                    # UserControlFlowTools(),
-                    self.tool_get_agent_description,
-                    self.tool_get_enabled_agents,
-                ],
-                debug_mode=agent_debug_mode_enabled(),
-                instructions=[PLANNER_INSTRUCTION],
-                # output format
-                markdown=False,
-                output_schema=PlannerResponse,
-                expected_output=PLANNER_EXPECTED_OUTPUT,
-                use_json_mode=model_utils_mod.model_should_use_json_mode(model),
-                # context
-                db=InMemoryDb(),
-                add_datetime_to_context=True,
-                add_history_to_context=True,
-                num_history_runs=5,
-                read_chat_history=True,
-                enable_session_summaries=True,
-            )
-            return self.agent
-        except Exception as exc:
-            logger.exception("Failed to initialize planner agent: %s", exc)
-            self.agent = None
+            # Planner shares the super_agent model configuration (parity with
+            # the previous implementation).
+            return model_utils_mod.get_chat_model_for_agent("super_agent")
+        except Exception as e:
+            logger.warning(f"Planner: failed to resolve chat model: {e}")
             return None
+
+    def _get_or_init_graph(self):
+        """Build (or rebuild on model change) the compiled planning graph."""
+        model = self._resolve_model()
+        if model is None:
+            return self._graph
+
+        identity = model_utils_mod.describe_chat_model(model)
+        if self._graph is not None and identity == self._model_identity:
+            return self._graph
+
+        self._model_identity = identity
+
+        async def generate(state: PlannerState) -> dict:
+            system_prompt = "\n".join(
+                [
+                    PLANNER_INSTRUCTION,
+                    self._render_agent_catalog(),
+                    PLANNER_EXPECTED_OUTPUT,
+                ]
+            )
+            response = await model.ainvoke(
+                [SystemMessage(content=system_prompt), *state["messages"]]
+            )
+            parsed = _parse_planner_response(str(response.content), identity)
+            return {
+                "messages": [response],
+                "planner_response": parsed,
+                "terminal_guidance": parsed.reason == "malformed planner output",
+            }
+
+        def validate(state: PlannerState) -> dict:
+            parsed = state["planner_response"]
+            if parsed is None or not parsed.tasks:
+                return {}
+            planable = set(self.agent_connections.get_planable_agent_cards().keys())
+            invalid = {t.agent_name for t in parsed.tasks if t.agent_name not in planable}
+            if not invalid:
+                return {}
+            invalid_list = ", ".join(sorted(invalid))
+            logger.warning(f"Planner proposed unsupported agents: {invalid_list}")
+            return {
+                "planner_response": PlannerResponse(
+                    tasks=[],
+                    adequate=False,
+                    reason="unsupported agents",
+                    guidance_message=(
+                        f"Planner selected unsupported agent(s): {invalid_list}. "
+                        f"Maybe the chosen model `{identity}` hallucinated."
+                    ),
+                ),
+                "terminal_guidance": True,
+            }
+
+        def clarify(state: PlannerState) -> dict:
+            parsed = state["planner_response"]
+            prompt = parsed.guidance_message or parsed.reason or "More detail needed."
+            answer = interrupt(prompt)
+            return {
+                "messages": [HumanMessage(content=str(answer))],
+                "clarify_count": state["clarify_count"] + 1,
+            }
+
+        def route_after_validate(state: PlannerState) -> str:
+            parsed = state["planner_response"]
+            if parsed is None or state["terminal_guidance"]:
+                return END
+            if parsed.adequate and parsed.tasks:
+                return END
+            if parsed.guidance_message and state["clarify_count"] < (
+                MAX_CLARIFICATION_ROUNDS
+            ):
+                return "clarify"
+            return END
+
+        graph = StateGraph(PlannerState)
+        graph.add_node("generate", generate)
+        graph.add_node("validate", validate)
+        graph.add_node("clarify", clarify)
+        graph.add_edge(START, "generate")
+        graph.add_edge("generate", "validate")
+        graph.add_conditional_edges(
+            "validate", route_after_validate, {END: END, "clarify": "clarify"}
+        )
+        graph.add_edge("clarify", "generate")
+        self._graph = graph.compile(checkpointer=self._checkpointer)
+        return self._graph
+
+    # ------------------------
+    # Public API
+    # ------------------------
 
     async def create_plan(
         self,
@@ -138,177 +265,93 @@ class ExecutionPlanner:
         """
         Create an execution plan from user input.
 
-        This method orchestrates the planning agent run and returns a
-        validated `ExecutionPlan` instance. The optional `user_input_callback`
-        is called whenever the planner requests clarification; the callback
-        should accept a `UserInputRequest` and arrange for the user's answer to
-        be provided (typically by calling `UserInputRequest.provide_response`).
-
-        Args:
-            user_input: The user's request to be planned.
-            user_input_callback: Async callback invoked with
-                `UserInputRequest` instances when clarification is required.
-
-        Returns:
-            ExecutionPlan: A structured plan with tasks for execution.
+        `user_input_callback` is invoked with a `UserInputRequest` whenever the
+        planning graph interrupts for clarification; the orchestrator registers
+        the request and the user's eventual answer resumes the graph.
         """
         conversation_id = user_input.meta.conversation_id
         plan = ExecutionPlan(
             plan_id=generate_uuid("plan"),
             conversation_id=conversation_id,
             user_id=user_input.meta.user_id,
-            orig_query=user_input.query,  # Store the original query
+            orig_query=user_input.query,
             created_at=datetime.now().isoformat(),
         )
 
-        # Analyze input and create appropriate tasks
-        tasks, guidance_message = await self._analyze_input_and_create_tasks(
-            user_input,
-            conversation_id,
-            user_input_callback,
-            thread_id,
+        tasks, guidance_message = await self._run_graph(
+            user_input, conversation_id, user_input_callback, thread_id
         )
         plan.tasks = tasks
         plan.guidance_message = guidance_message
-
         return plan
 
-    async def _analyze_input_and_create_tasks(
+    async def _run_graph(
         self,
         user_input: UserInput,
         conversation_id: str,
         user_input_callback: Callable,
         thread_id: str,
-    ) -> tuple[List[Task], Optional[str]]:
-        """
-        Analyze user input and produce a list of `Task` objects.
-
-        The planner delegates reasoning to an LLM agent which must output a
-        JSON document conforming to `PlannerResponse`. If the planner pauses to
-        request user input, the provided `user_input_callback` will be
-        invoked for each requested field.
-
-        Args:
-            user_input: The original user input to analyze.
-            conversation_id: Conversation this planning belongs to.
-            user_input_callback: Async callback used for Human-in-the-Loop.
-
-        Returns:
-            A tuple of (list of Task objects, optional guidance message).
-            If plan is inadequate, returns empty list with guidance message.
-        """
-        # Execute planning with the agent (lazy init)
-        agent = self._get_or_init_agent()
-        if agent is None:
+    ) -> Tuple[List[Task], Optional[str]]:
+        graph = self._get_or_init_graph()
+        if graph is None:
             return [], (
                 "Planner is unavailable: failed to initialize model/provider. "
                 "Please configure a valid API key or provider settings and retry."
             )
 
-        # Be robust if model attributes are unavailable
+        config = {"configurable": {"thread_id": conversation_id}}
+        payload = PlannerInput(
+            target_agent_name=user_input.target_agent_name or "",
+            query=user_input.query,
+        ).model_dump_json()
+        graph_input = {
+            "messages": [HumanMessage(content=payload)],
+            "planner_response": None,
+            "terminal_guidance": False,
+            "clarify_count": 0,
+        }
+
         try:
-            model = agent.model
-            model_description = f"{model.id} (via {model.provider})"
-        except Exception:
-            model_description = "unknown model/provider"
-        try:
-            run_response = agent.run(
-                PlannerInput(
-                    target_agent_name=user_input.target_agent_name,
-                    query=user_input.query,
-                ),
-                session_id=conversation_id,
-                user_id=user_input.meta.user_id,
-            )
+            result = await graph.ainvoke(graph_input, config)
+            while "__interrupt__" in result:
+                prompt = str(result["__interrupt__"][0].value)
+                request = UserInputRequest(prompt)
+                await user_input_callback(request)
+                answer = await request.wait_for_response()
+                result = await graph.ainvoke(Command(resume=answer), config)
         except Exception as exc:
             logger.exception("Planner run failed: %s", exc)
             return [], (
                 f"Planner encountered an error during execution: {exc}. "
-                f"Please check the capabilities of your model `{model_description}` and try again later."
+                f"Please check the capabilities of your model "
+                f"`{self._model_identity}` and try again later."
             )
 
-        # Handle user input requests through Human-in-the-Loop workflow
-        while run_response.is_paused:
-            for tool in run_response.tools_requiring_user_input:
-                input_schema = tool.user_input_schema
-
-                for field in input_schema:
-                    # Use callback for async user input
-                    # TODO: prompt options if available
-                    request = UserInputRequest(field.description)
-                    await user_input_callback(request)
-                    user_value = await request.wait_for_response()
-                    field.value = user_value
-
-            # Continue agent execution with updated inputs
-            run_response = agent.continue_run(
-                # TODO: rollback to `run_id=run_response.run_id` when bug fixed by Agno
-                run_response=run_response,
-                updated_tools=run_response.tools,
-            )
-
-            if not run_response.is_paused:
-                break
-
-        # Parse planning result and create tasks
-        plan_raw = run_response.content
+        plan_raw = result.get("planner_response")
         if not isinstance(plan_raw, PlannerResponse):
-            return (
-                [],
-                (
-                    f"Planner produced a malformed response: `{plan_raw}`. "
-                    f"Please check the capabilities of your model `{model_description}` and try again later."
-                ),
+            return [], (
+                f"Planner produced a malformed response: `{plan_raw}`. "
+                f"Please check the capabilities of your model "
+                f"`{self._model_identity}` and try again later."
             )
         logger.info(f"Planner produced plan: {plan_raw}")
 
-        # Check if plan is inadequate or has no tasks
         guidance_message = plan_raw.guidance_message or plan_raw.reason
         if not plan_raw.adequate or not plan_raw.tasks:
-            # Use guidance_message from planner, or fall back to reason
             logger.info(f"Planner needs user guidance: {guidance_message}")
-            return [], guidance_message  # Return empty task list with guidance
-
-        planable_cards = self.agent_connections.get_planable_agent_cards()
-        planable_agent_names = set(planable_cards.keys())
-        invalid_agents = {
-            t.agent_name
-            for t in plan_raw.tasks
-            if t.agent_name not in planable_agent_names
-        }
-        if invalid_agents:
-            available_agents = (
-                ", ".join(sorted(planable_agent_names))
-                if planable_agent_names
-                else "none"
-            )
-            invalid_list = ", ".join(sorted(invalid_agents))
-            guidance_message = (
-                "Planner selected unsupported agent(s):"
-                f" {invalid_list}."
-                f" Maybe the chosen model `{model_description}` hallucinated."
-            )
-            logger.warning(
-                "Planner proposed unsupported agents: %s (available: %s)",
-                invalid_list,
-                available_agents,
-            )
             return [], guidance_message
 
-        # Create tasks from planner response
-        tasks = []
-        for t in plan_raw.tasks:
-            tasks.append(
-                self._create_task(
-                    t,
-                    user_input.meta.user_id,
-                    conversation_id=user_input.meta.conversation_id,
-                    thread_id=thread_id,
-                    handoff_from_super_agent=(not user_input.target_agent_name),
-                )
+        tasks = [
+            self._create_task(
+                t,
+                user_input.meta.user_id,
+                conversation_id=user_input.meta.conversation_id,
+                thread_id=thread_id,
+                handoff_from_super_agent=(not user_input.target_agent_name),
             )
-
-        return tasks, guidance_message  # Return tasks with no guidance message
+            for t in plan_raw.tasks
+        ]
+        return tasks, None
 
     def _create_task(
         self,
@@ -318,28 +361,13 @@ class ExecutionPlanner:
         thread_id: str | None = None,
         handoff_from_super_agent: bool = False,
     ) -> Task:
-        """
-        Create a new task for the specified agent.
-
-        Args:
-            conversation_id: Conversation this task belongs to
-            user_id: User who requested this task
-            agent_name: Name of the agent to execute the task
-            query: Query/prompt for the agent
-            pattern: Execution pattern (once or recurring)
-            schedule_config: Schedule configuration for recurring tasks
-
-        Returns:
-            Task: Configured task ready for execution.
-        """
-        # task_brief is a _TaskBrief model instance
-
+        """Create a new task for the specified agent from a planning brief."""
         # Reuse parent thread_id across subagent handoff.
-        # When handing off from Super Agent, a NEW conversation_id is created for the subagent,
-        # but we PRESERVE the parent thread_id to correlate the entire flow as one interaction.
+        # When handing off from Super Agent, a NEW conversation_id is created for
+        # the subagent, but we PRESERVE the parent thread_id to correlate the
+        # entire flow as one interaction.
         if handoff_from_super_agent:
             conversation_id = generate_conversation_id()
-            # Do NOT override thread_id here (keep the parent's thread_id per Spec A)
 
         return Task(
             conversation_id=conversation_id,
@@ -354,75 +382,26 @@ class ExecutionPlanner:
             handoff_from_super_agent=handoff_from_super_agent,
         )
 
-    def tool_get_agent_description(self, agent_name: str) -> str:
-        """
-        Get the capabilities description of a specified agent by name.
 
-        This function returns capability information for agents that can be used
-        in the planning process to determine if an agent is suitable for a task.
+def agentcard_to_prompt(card):
+    """Convert an AgentCard to an LLM-friendly prompt string."""
 
-        Args:
-            agent_name: The name of the agent whose capabilities are to be retrieved
-
-        Returns:
-            str: A description of the agent's capabilities and supported operations.
-        """
-        if card := self.agent_connections.get_agent_card(agent_name):
-            if isinstance(card, AgentCard):
-                return agentcard_to_prompt(card)
-            if isinstance(card, dict):
-                return str(card)
-            return agentcard_to_prompt(card)
-
-        return "The requested agent could not be found or is not available."
-
-    def tool_get_enabled_agents(self) -> str:
-        map_agent_name_to_card = self.agent_connections.get_planable_agent_cards()
-        parts = []
-        for agent_name, card in map_agent_name_to_card.items():
-            parts.append(f"<{agent_name}>")
-            parts.append(agentcard_to_prompt(card))
-            parts.append((f"</{agent_name}>\n"))
-        return "\n".join(parts)
-
-
-def agentcard_to_prompt(card: AgentCard):
-    """Convert an AgentCard to an LLM-friendly prompt string.
-
-    Args:
-        card: The AgentCard object or JSON structure describing an agent.
-
-    Returns:
-        A formatted string suitable for inclusion in the planner's instructions.
-    """
-
-    # Start with basic agent information
     prompt = f"# Agent: {card.name}\n\n"
-
-    # Add description
     prompt += f"**Description:** {card.description}\n\n"
 
-    # Add skills section
-    if card.skills:
+    if getattr(card, "skills", None):
         prompt += "## Available Skills\n\n"
-
         for i, skill in enumerate(card.skills, 1):
             prompt += f"### {i}. {skill.name} (`{skill.id}`)\n\n"
             prompt += f"**Description:** {skill.description}\n\n"
-
-            # Add examples if available
             if skill.examples:
                 prompt += "**Examples:**\n"
                 for example in skill.examples:
                     prompt += f"- {example}\n"
                 prompt += "\n"
-
-            # Add tags if available
             if skill.tags:
                 tags_str = ", ".join([f"`{tag}`" for tag in skill.tags])
                 prompt += f"**Tags:** {tags_str}\n\n"
-
-            # Add separator between skills (except for the last one)
             if i < len(card.skills):
                 prompt += "---\n\n"
 

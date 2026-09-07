@@ -1,391 +1,245 @@
+"""Tests for the LangGraph-based ExecutionPlanner."""
+
 from __future__ import annotations
 
+import asyncio
+import json
 from types import SimpleNamespace
+from typing import Any, List, Optional
 
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatResult
 
 import quantcell.core.plan.planner as planner_mod
-import quantcell.utils.model as model_utils_mod
-from quantcell.core.plan.models import PlannerResponse
 from quantcell.core.plan.planner import ExecutionPlanner
 from quantcell.core.types import UserInput, UserInputMetadata
 
 
-class StubConnections:
-    def __init__(
+class RecordingFakeChatModel(GenericFakeChatModel):
+    """Fake chat model that records every prompt it receives."""
+
+    seen_prompts: List[list] = []
+
+    def _generate(
         self,
-        cards: dict[str, object] | None = None,
-        planable: dict[str, object] | None = None,
-    ):
-        self.cards = cards or {}
-        self.planable = planable or self.cards
+        messages: list,
+        stop: Optional[List[str]] = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        type(self).seen_prompts.append(list(messages))
+        return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
-    def get_all_agent_cards(self) -> dict[str, object]:
-        return self.cards
 
-    def get_planable_agent_cards(self) -> dict[str, object]:
-        return self.planable
+def make_fake_model(replies: list[str]) -> RecordingFakeChatModel:
+    RecordingFakeChatModel.seen_prompts = []
+    return RecordingFakeChatModel(
+        messages=iter([AIMessage(content=reply) for reply in replies])
+    )
+
+
+class StubConnections:
+    def __init__(self, cards: dict):
+        self._cards = cards
+
+    def get_planable_agent_cards(self) -> dict:
+        return self._cards
 
     def get_agent_card(self, name: str):
-        return self.cards.get(name)
+        return self._cards.get(name)
+
+
+def make_card(name: str, description: str):
+    return SimpleNamespace(name=name, description=description, skills=[])
+
+
+RESEARCH_CARDS = {
+    "ResearchAgent": make_card("ResearchAgent", "Analyzes SEC filings")
+}
+
+
+def make_user_input(
+    query: str, conversation_id: str = "conv-1", target_agent: str = "ResearchAgent"
+) -> UserInput:
+    return UserInput(
+        query=query,
+        target_agent_name=target_agent,
+        meta=UserInputMetadata(conversation_id=conversation_id, user_id="user-1"),
+    )
+
+
+ADEQUATE_REPLY = json.dumps(
+    {
+        "tasks": [
+            {
+                "title": "Research Apple filings",
+                "query": "Analyze AAPL 10-K",
+                "agent_name": "ResearchAgent",
+                "pattern": "once",
+                "schedule_config": None,
+            }
+        ],
+        "adequate": True,
+        "reason": "Clear request.",
+        "guidance_message": None,
+    }
+)
+
+INADEQUATE_REPLY = json.dumps(
+    {
+        "tasks": [],
+        "adequate": False,
+        "reason": "Schedule needs confirmation.",
+        "guidance_message": "Please confirm the daily 09:00 schedule.",
+    }
+)
+
+HALLUCINATED_REPLY = json.dumps(
+    {
+        "tasks": [
+            {
+                "title": "Do something",
+                "query": "q",
+                "agent_name": "ImaginaryAgent",
+                "pattern": "once",
+                "schedule_config": None,
+            }
+        ],
+        "adequate": True,
+        "reason": "ok",
+        "guidance_message": None,
+    }
+)
+
+
+def patch_model(monkeypatch: pytest.MonkeyPatch, model) -> None:
+    monkeypatch.setattr(
+        planner_mod.model_utils_mod,
+        "get_chat_model_for_agent",
+        lambda agent_name, **kwargs: model,
+    )
+
+
+async def noop_callback(request) -> None:
+    """Callback that never answers; used where no clarification is expected."""
 
 
 @pytest.mark.asyncio
-async def test_create_plan_handles_paused_run(monkeypatch: pytest.MonkeyPatch):
-    field = SimpleNamespace(description="Provide ticker", value=None)
-    tool = SimpleNamespace(user_input_schema=[field])
+async def test_adequate_reply_produces_task_plan(monkeypatch):
+    patch_model(monkeypatch, make_fake_model([ADEQUATE_REPLY]))
+    planner = ExecutionPlanner(StubConnections(RESEARCH_CARDS))
 
-    final_plan = PlannerResponse.model_validate(
-        {
-            "adequate": True,
-            "reason": "ok",
-            "tasks": [
-                {
-                    "title": "Research task",
-                    "query": "Run research",
-                    "agent_name": "ResearchAgent",
-                    "pattern": "once",
-                    "schedule_config": None,
-                }
-            ],
-            "guidance_message": None,
-        }
+    plan = await planner.create_plan(
+        make_user_input("Analyze AAPL 10-K"), noop_callback, "thread-1"
     )
 
-    paused_response = SimpleNamespace(
-        is_paused=True,
-        tools_requiring_user_input=[tool],
-        tools=[tool],
-        content=None,
-    )
-    final_response = SimpleNamespace(
-        is_paused=False,
-        tools=[],
-        tools_requiring_user_input=[],
-        content=final_plan,
-    )
-
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            # Provide minimal model info for error formatting paths
-            self.model = SimpleNamespace(id="fake-model", provider="fake-provider")
-
-        def run(self, *args, **kwargs):
-            return paused_response
-
-        def continue_run(self, *args, **kwargs):
-            return final_response
-
-    monkeypatch.setattr(planner_mod, "Agent", FakeAgent)
-    monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
-
-    research_card = SimpleNamespace(name="ResearchAgent", description="Research")
-    planner = ExecutionPlanner(StubConnections({"ResearchAgent": research_card}))
-
-    user_input = UserInput(
-        query="Need super-agent handoff",
-        target_agent_name="",
-        meta=UserInputMetadata(conversation_id="conv-1", user_id="user-1"),
-    )
-
-    prompts: list[str] = []
-
-    async def callback(request):
-        prompts.append(request.prompt)
-        request.provide_response("user response")
-
-    plan = await planner.create_plan(user_input, callback, "thread-9")
-
-    assert prompts == ["Provide ticker"]
+    assert plan.guidance_message is None
+    assert len(plan.tasks) == 1
     task = plan.tasks[0]
-    assert task.handoff_from_super_agent is True
-    assert task.conversation_id != "conv-1"
-    assert field.value == "user response"
+    assert task.agent_name == "ResearchAgent"
+    assert task.query == "Analyze AAPL 10-K"
+    assert task.title == "Research Apple filings"
+    assert task.thread_id == "thread-1"
+    assert plan.conversation_id == "conv-1"
 
 
 @pytest.mark.asyncio
-async def test_create_plan_raises_on_inadequate_plan(monkeypatch: pytest.MonkeyPatch):
-    inadequate_plan = PlannerResponse.model_validate(
-        {
-            "adequate": False,
-            "reason": "need more info",
-            "tasks": [],
-        }
+async def test_agent_catalog_is_injected_into_prompt(monkeypatch):
+    patch_model(monkeypatch, make_fake_model([ADEQUATE_REPLY]))
+    planner = ExecutionPlanner(StubConnections(RESEARCH_CARDS))
+
+    await planner.create_plan(make_user_input("do it"), noop_callback, "t")
+
+    prompt_text = " ".join(
+        str(getattr(m, "content", "")) for m in RecordingFakeChatModel.seen_prompts[0]
     )
-
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def run(self, *args, **kwargs):
-            return SimpleNamespace(
-                is_paused=False,
-                tools_requiring_user_input=[],
-                tools=[],
-                content=inadequate_plan,
-            )
-
-    monkeypatch.setattr(planner_mod, "Agent", FakeAgent)
-    monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
-
-    planner = ExecutionPlanner(StubConnections())
-
-    user_input = UserInput(
-        query="Need super-agent handoff",
-        target_agent_name="AgentX",
-        meta=UserInputMetadata(conversation_id="conv-2", user_id="user-2"),
-    )
-
-    async def callback(request):
-        raise AssertionError("callback should not be invoked")
-
-    plan = await planner.create_plan(user_input, callback, "thread-55")
-    assert plan.guidance_message
+    assert "ResearchAgent" in prompt_text
+    assert "Analyzes SEC filings" in prompt_text
 
 
 @pytest.mark.asyncio
-async def test_create_plan_rejects_non_planable_agents(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    invalid_plan = PlannerResponse.model_validate(
-        {
-            "adequate": True,
-            "reason": "ok",
-            "tasks": [
-                {
-                    "title": "Run hidden agent",
-                    "query": "Do secret things",
-                    "agent_name": "HiddenAgent",
-                    "pattern": "once",
-                    "schedule_config": None,
-                }
-            ],
-            "guidance_message": None,
-        }
-    )
+async def test_hallucinated_agent_rejected_with_guidance(monkeypatch):
+    patch_model(monkeypatch, make_fake_model([HALLUCINATED_REPLY]))
+    planner = ExecutionPlanner(StubConnections(RESEARCH_CARDS))
 
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            self.model = SimpleNamespace(id="fake-model", provider="fake-provider")
-
-        def run(self, *args, **kwargs):
-            return SimpleNamespace(
-                is_paused=False,
-                tools_requiring_user_input=[],
-                tools=[],
-                content=invalid_plan,
-            )
-
-    monkeypatch.setattr(planner_mod, "Agent", FakeAgent)
-    monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
-
-    allowed_card = SimpleNamespace(name="VisibleAgent", description="Visible")
-    planner = ExecutionPlanner(
-        StubConnections(
-            {"VisibleAgent": allowed_card},
-            planable={"VisibleAgent": allowed_card},
-        )
-    )
-
-    user_input = UserInput(
-        query="Use hidden agent",
-        target_agent_name="VisibleAgent",
-        meta=UserInputMetadata(conversation_id="conv-3", user_id="user-3"),
-    )
-
-    async def callback(_):  # pragma: no cover - should not be called
-        raise AssertionError("callback should not be invoked")
-
-    plan = await planner.create_plan(user_input, callback, "thread-77")
+    plan = await planner.create_plan(make_user_input("do it"), noop_callback, "t")
 
     assert plan.tasks == []
-    assert plan.guidance_message
-    assert "unsupported agent" in plan.guidance_message
-
-
-def test_tool_get_enabled_agents_formats_cards(monkeypatch: pytest.MonkeyPatch):
-    # Mock create_model to avoid API key validation in CI
-    monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
-
-    skill = SimpleNamespace(
-        name="Lookup",
-        id="lookup",
-        description="Look things up",
-        examples=["Find revenue"],
-        tags=["finance"],
-    )
-    card_alpha = SimpleNamespace(
-        name="AgentAlpha",
-        description="Alpha agent",
-        skills=[skill],
-    )
-    planner = ExecutionPlanner(StubConnections({"AgentAlpha": card_alpha}))
-
-    output = planner.tool_get_enabled_agents()
-
-    assert "<AgentAlpha>" in output
-    assert "Lookup" in output
-    assert "</AgentAlpha>" in output
+    assert "hallucinated" in (plan.guidance_message or "")
 
 
 @pytest.mark.asyncio
-async def test_create_plan_handles_malformed_response(monkeypatch: pytest.MonkeyPatch):
-    """Planner returns non-PlannerResponse content -> guidance message with error."""
+async def test_inadequate_reply_interrupts_then_resumes(monkeypatch):
+    model = make_fake_model([INADEQUATE_REPLY, ADEQUATE_REPLY])
+    patch_model(monkeypatch, model)
+    planner = ExecutionPlanner(StubConnections(RESEARCH_CARDS))
 
-    malformed_content = "not-a-planner-response"
+    prompts_seen: list[str] = []
 
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            # Provide minimal model attributes for error formatting
-            self.model = SimpleNamespace(id="fake-model", provider="fake-provider")
+    async def answering_callback(request) -> None:
+        prompts_seen.append(request.prompt)
+        # Answer asynchronously, as the orchestrator does via the registry.
+        asyncio.get_event_loop().call_soon(request.provide_response, "confirmed 09:00")
 
-        def run(self, *args, **kwargs):
-            return SimpleNamespace(
-                is_paused=False,
-                tools_requiring_user_input=[],
-                tools=[],
-                content=malformed_content,
-            )
-
-    monkeypatch.setattr(planner_mod, "Agent", FakeAgent)
-    # Use utils module API for model stubbing per planner implementation
-    monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
-
-    planner = ExecutionPlanner(StubConnections())
-    # Ensure planner has an agent set even if __init__ path changes in future
-    planner.agent = FakeAgent()
-
-    user_input = UserInput(
-        query="malformed please",
-        target_agent_name="",
-        meta=UserInputMetadata(conversation_id="conv-x", user_id="user-x"),
+    plan = await planner.create_plan(
+        make_user_input("monitor TSLA daily"), answering_callback, "t"
     )
 
-    async def callback(_):
-        raise AssertionError("callback should not be invoked for malformed response")
+    assert prompts_seen == ["Please confirm the daily 09:00 schedule."]
+    assert len(plan.tasks) == 1
+    # The resumed generation must see the user's confirmation
+    second_prompt_text = " ".join(
+        str(getattr(m, "content", "")) for m in RecordingFakeChatModel.seen_prompts[1]
+    )
+    assert "confirmed 09:00" in second_prompt_text
 
-    plan = await planner.create_plan(user_input, callback, "thread-x")
 
-    # Should return no tasks and a guidance message explaining the issue
+@pytest.mark.asyncio
+async def test_clarification_capped_at_three_rounds(monkeypatch):
+    model = make_fake_model([INADEQUATE_REPLY] * 5)
+    patch_model(monkeypatch, model)
+    planner = ExecutionPlanner(StubConnections(RESEARCH_CARDS))
+
+    callback_count = 0
+
+    async def answering_callback(request) -> None:
+        nonlocal callback_count
+        callback_count += 1
+        asyncio.get_event_loop().call_soon(request.provide_response, "still unclear")
+
+    plan = await planner.create_plan(
+        make_user_input("monitor something"), answering_callback, "t"
+    )
+
+    assert callback_count <= 3
     assert plan.tasks == []
-    assert plan.guidance_message
-    assert "malformed response" in plan.guidance_message
-    assert malformed_content in plan.guidance_message
-
-
-def test_tool_get_agent_description_dict_and_missing(monkeypatch: pytest.MonkeyPatch):
-    """Cover dict formatting branch and not-found fallback in agent description."""
-
-    class Conn(StubConnections):
-        def __init__(self):
-            super().__init__({"DictAgent": {"name": "DictAgent", "desc": "d"}})
-
-    # Avoid real model creation in planner __init__
-    monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
-    )
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
-
-    planner = ExecutionPlanner(Conn())
-
-    # Dict branch returns str(dict)
-    out = planner.tool_get_agent_description("DictAgent")
-    assert isinstance(out, str)
-    assert "DictAgent" in out
-
-    # Not found branch
-    missing = planner.tool_get_agent_description("MissingAgent")
-    assert "could not be found" in missing
+    assert plan.guidance_message == "Please confirm the daily 09:00 schedule."
 
 
 @pytest.mark.asyncio
-async def test_lazy_init_failure_returns_guidance(monkeypatch: pytest.MonkeyPatch):
-    """When planner agent cannot initialize, return guidance instead of crashing."""
+async def test_malformed_reply_returns_guidance(monkeypatch):
+    patch_model(monkeypatch, make_fake_model(["not json"]))
+    planner = ExecutionPlanner(StubConnections(RESEARCH_CARDS))
 
-    # Cause model creation to fail
-    def _raise(*_args, **_kwargs):
-        raise RuntimeError("no model")
-
-    monkeypatch.setattr(model_utils_mod, "get_model_for_agent", _raise)
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
-
-    class DummyConn:
-        pass
-
-    planner = ExecutionPlanner(DummyConn())
-
-    user_input = UserInput(
-        query="plan this",
-        target_agent_name="",
-        meta=UserInputMetadata(conversation_id="conv-lazy", user_id="user-lazy"),
-    )
-
-    async def callback(_):
-        # Should not be invoked when agent is unavailable
-        raise AssertionError("callback should not be invoked")
-
-    plan = await planner.create_plan(user_input, callback, "thread-lazy")
+    plan = await planner.create_plan(make_user_input("hello"), noop_callback, "t")
 
     assert plan.tasks == []
-    assert plan.guidance_message
-    assert "Planner is unavailable" in plan.guidance_message
+    assert "malformed" in (plan.guidance_message or "").lower()
 
 
 @pytest.mark.asyncio
-async def test_malformed_response_unknown_model_description(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Malformed planner response falls back to 'unknown model/provider' when model info missing."""
+async def test_model_unavailable_returns_guidance(monkeypatch):
+    def _raise(agent_name, **kwargs):
+        raise ValueError("no provider")
 
-    malformed_content = "oops-not-planner-response"
-
-    class FakeAgent:
-        def __init__(self, *args, **kwargs):
-            # No model attribute to trigger unknown provider path
-            pass
-
-        def run(self, *args, **kwargs):
-            return SimpleNamespace(
-                is_paused=False,
-                tools_requiring_user_input=[],
-                tools=[],
-                content=malformed_content,
-            )
-
-    monkeypatch.setattr(planner_mod, "Agent", FakeAgent)
     monkeypatch.setattr(
-        model_utils_mod, "get_model_for_agent", lambda *args, **kwargs: "stub-model"
+        planner_mod.model_utils_mod, "get_chat_model_for_agent", _raise
     )
-    monkeypatch.setattr(planner_mod, "agent_debug_mode_enabled", lambda: False)
+    planner = ExecutionPlanner(StubConnections(RESEARCH_CARDS))
 
-    planner = ExecutionPlanner(StubConnections())
-    # Ensure lazy init creates our FakeAgent
-    planner.agent = None
+    plan = await planner.create_plan(make_user_input("hello"), noop_callback, "t")
 
-    user_input = UserInput(
-        query="malformed please",
-        target_agent_name="",
-        meta=UserInputMetadata(conversation_id="conv-x", user_id="user-x"),
-    )
-
-    async def callback(_):
-        raise AssertionError("callback should not be invoked")
-
-    plan = await planner.create_plan(user_input, callback, "thread-x")
-    assert plan.guidance_message
-    assert "unknown model/provider" in plan.guidance_message
+    assert plan.tasks == []
+    assert "unavailable" in (plan.guidance_message or "").lower()
