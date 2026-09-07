@@ -210,6 +210,26 @@ def get_chat_model_for_agent(agent_name: str, **kwargs):
         raise
 
 
+def get_embeddings_for_agent(agent_name: str, **kwargs):
+    """
+    Get LangChain embeddings configured for an agent (three-tier config).
+
+    LangChain counterpart of `get_embedder_for_agent`; used by the research
+    agent's knowledge base.
+    """
+    from quantcell.adapters.models.langchain_factory import (
+        create_embeddings_for_agent,
+    )
+
+    try:
+        return create_embeddings_for_agent(agent_name, **kwargs)
+    except Exception as e:
+        logger.error(
+            f"Failed to create LangChain embeddings for agent '{agent_name}': {e}"
+        )
+        raise
+
+
 def get_model(env_key: str, **kwargs):
     """
     Get model instance using configuration system with environment variable override.

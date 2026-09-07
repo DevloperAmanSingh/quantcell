@@ -288,3 +288,130 @@ class TestFactoryResolution:
         )
         with pytest.raises(ValueError, match="Agent configuration not found"):
             LangChainModelFactory(cm).create_chat_model_for_agent("ghost_agent")
+
+
+# ============================================
+# Embeddings factory tests
+# ============================================
+
+from langchain_google_genai import GoogleGenerativeAIEmbeddings  # noqa: E402
+from langchain_ollama import OllamaEmbeddings  # noqa: E402
+from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings  # noqa: E402
+
+from quantcell.adapters.models.langchain_factory import (  # noqa: E402
+    build_embeddings,
+)
+
+
+class TestEmbeddingsBuilders:
+    def test_openai_embeddings(self):
+        config = make_config(
+            "openai", default_embedding_model="text-embedding-3-small"
+        )
+        emb = build_embeddings("openai", config, None)
+        assert isinstance(emb, OpenAIEmbeddings)
+        assert emb.model == "text-embedding-3-small"
+
+    def test_compatible_provider_uses_base_url_and_disables_ctx_check(self):
+        config = make_config(
+            "siliconflow",
+            base_url="https://api.siliconflow.cn/v1",
+            default_embedding_model="BAAI/bge-m3",
+        )
+        emb = build_embeddings("siliconflow", config, None)
+        assert isinstance(emb, OpenAIEmbeddings)
+        assert emb.openai_api_base == "https://api.siliconflow.cn/v1"
+        # Non-OpenAI endpoints reject tokenized input arrays
+        assert emb.check_embedding_ctx_length is False
+
+    def test_google_embeddings_prefixes_model(self):
+        config = make_config(
+            "google", default_embedding_model="gemini-embedding-001"
+        )
+        emb = build_embeddings("google", config, None)
+        assert isinstance(emb, GoogleGenerativeAIEmbeddings)
+        assert emb.model == "models/gemini-embedding-001"
+
+    def test_azure_embeddings(self):
+        config = make_config(
+            "azure",
+            base_url="https://myres.openai.azure.com",
+            default_embedding_model="embed-deployment",
+            extra_config={"api_version": "2024-10-21"},
+        )
+        emb = build_embeddings("azure", config, None)
+        assert isinstance(emb, AzureOpenAIEmbeddings)
+        assert emb.deployment == "embed-deployment"
+
+    def test_ollama_embeddings(self):
+        config = make_config(
+            "ollama",
+            api_key=None,
+            default_embedding_model="nomic-embed-text",
+            parameters={"host": "http://localhost:11434"},
+        )
+        emb = build_embeddings("ollama", config, None)
+        assert isinstance(emb, OllamaEmbeddings)
+        assert emb.model == "nomic-embed-text"
+
+    def test_provider_without_embedding_model_raises(self):
+        config = make_config("openai")  # no default_embedding_model
+        with pytest.raises(ValueError, match="does not support embedding"):
+            build_embeddings("openai", config, None)
+
+
+class TestEmbeddingsAgentResolution:
+    def test_agent_embedding_config_used(self):
+        agent = make_agent_config("research_agent", "openai", "gpt-4o")
+        agent.embedding_model = AgentModelConfig(
+            model_id="text-embedding-3-large", provider="openai", parameters={}
+        )
+        cm = StubConfigManager(
+            providers={
+                "openai": make_config(
+                    "openai", default_embedding_model="text-embedding-3-small"
+                )
+            },
+            primary_provider="openai",
+            agents={"research_agent": agent},
+        )
+        emb = LangChainModelFactory(cm).create_embeddings_for_agent("research_agent")
+        assert isinstance(emb, OpenAIEmbeddings)
+        assert emb.model == "text-embedding-3-large"
+
+    def test_agent_without_embedding_config_uses_provider_default(self):
+        cm = StubConfigManager(
+            providers={
+                "openai": make_config(
+                    "openai", default_embedding_model="text-embedding-3-small"
+                )
+            },
+            primary_provider="openai",
+            agents={
+                "research_agent": make_agent_config("research_agent", "openai", "gpt-4o")
+            },
+        )
+        emb = LangChainModelFactory(cm).create_embeddings_for_agent("research_agent")
+        assert emb.model == "text-embedding-3-small"
+
+    def test_unavailable_embedding_provider_falls_back_to_primary(self):
+        agent = make_agent_config("research_agent", "openai", "gpt-4o")
+        agent.embedding_model = AgentModelConfig(
+            model_id="gemini-embedding-001", provider="google", parameters={}
+        )
+        cm = StubConfigManager(
+            providers={
+                "openai": make_config(
+                    "openai", default_embedding_model="text-embedding-3-small"
+                ),
+                "google": make_config(
+                    "google", default_embedding_model="gemini-embedding-001"
+                ),
+            },
+            primary_provider="openai",
+            invalid_providers={"google"},
+            agents={"research_agent": agent},
+        )
+        emb = LangChainModelFactory(cm).create_embeddings_for_agent("research_agent")
+        assert isinstance(emb, OpenAIEmbeddings)
+        assert emb.model == "text-embedding-3-small"

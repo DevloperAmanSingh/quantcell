@@ -125,6 +125,103 @@ def build_chat_model(
     return builder(provider, config, model_id, **kwargs)
 
 
+# ============================================
+# Embeddings builders
+# ============================================
+
+
+def _require_embedding_model(
+    config: ProviderConfig, model_id: Optional[str]
+) -> str:
+    model_id = model_id or config.default_embedding_model
+    if not model_id:
+        raise ValueError(
+            f"Provider '{config.name}' does not support embedding models. "
+            f"Please configure embedding models in providers/{config.name}.yaml"
+        )
+    return model_id
+
+
+def _build_openai_family_embeddings(
+    provider: str, config: ProviderConfig, model_id: Optional[str], **kwargs
+):
+    from langchain_openai import OpenAIEmbeddings
+
+    model_id = _require_embedding_model(config, model_id)
+    params = {**config.embedding_parameters, **kwargs}
+    dimensions = params.get("dimensions")
+    logger.info(f"Creating LangChain {provider} embeddings: {model_id}")
+    return OpenAIEmbeddings(
+        model=model_id,
+        api_key=config.api_key,
+        base_url=config.base_url,
+        dimensions=int(dimensions) if dimensions else None,
+        # Non-OpenAI endpoints reject OpenAI's tokenized input arrays.
+        check_embedding_ctx_length=config.base_url is None,
+    )
+
+
+def _build_google_embeddings(
+    provider: str, config: ProviderConfig, model_id: Optional[str], **kwargs
+):
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+    model_id = _require_embedding_model(config, model_id)
+    if not model_id.startswith("models/"):
+        model_id = f"models/{model_id}"
+    logger.info(f"Creating LangChain Google embeddings: {model_id}")
+    return GoogleGenerativeAIEmbeddings(model=model_id, google_api_key=config.api_key)
+
+
+def _build_azure_embeddings(
+    provider: str, config: ProviderConfig, model_id: Optional[str], **kwargs
+):
+    from langchain_openai import AzureOpenAIEmbeddings
+
+    deployment = _require_embedding_model(config, model_id)
+    api_version = config.extra_config.get("api_version", "2024-10-21")
+    logger.info(f"Creating LangChain Azure embeddings: deployment={deployment}")
+    return AzureOpenAIEmbeddings(
+        azure_deployment=deployment,
+        api_key=config.api_key,
+        azure_endpoint=config.base_url,
+        api_version=api_version,
+    )
+
+
+def _build_ollama_embeddings(
+    provider: str, config: ProviderConfig, model_id: Optional[str], **kwargs
+):
+    from langchain_ollama import OllamaEmbeddings
+
+    model_id = _require_embedding_model(config, model_id)
+    params = {**config.embedding_parameters, **config.parameters, **kwargs}
+    logger.info(f"Creating LangChain Ollama embeddings: {model_id}")
+    return OllamaEmbeddings(model=model_id, base_url=params.get("host"))
+
+
+LC_EMBEDDINGS_BUILDERS: Dict[str, Callable] = {
+    "openai": _build_openai_family_embeddings,
+    **{name: _build_openai_family_embeddings for name in _OPENAI_COMPATIBLE_PROVIDERS},
+    "azure": _build_azure_embeddings,
+    "google": _build_google_embeddings,
+    "ollama": _build_ollama_embeddings,
+}
+
+
+def build_embeddings(
+    provider: str,
+    config: ProviderConfig,
+    model_id: Optional[str] = None,
+    **kwargs,
+):
+    """Build a LangChain embeddings instance for a provider."""
+    builder = LC_EMBEDDINGS_BUILDERS.get(provider)
+    if builder is None:
+        raise ValueError(f"Unsupported provider: {provider}")
+    return builder(provider, config, model_id, **kwargs)
+
+
 class LangChainModelFactory:
     """Creates LangChain chat models with the same resolution rules as ModelFactory.
 
@@ -223,6 +320,57 @@ class LangChainModelFactory:
             **merged_params,
         )
 
+    def create_embeddings_for_agent(self, agent_name: str, **kwargs):
+        """Create LangChain embeddings from an agent's config.
+
+        Mirrors the Agno `create_embedder_for_agent` rules: prefer the agent's
+        `embedding_model` config; fall back to the primary provider's default
+        embedding model when the configured provider is unavailable or no
+        embedding config exists.
+        """
+        agent_config = self.config_manager.get_agent_config(agent_name)
+        if not agent_config:
+            raise ValueError(f"Agent configuration not found: {agent_name}")
+        if not agent_config.enabled:
+            raise ValueError(f"Agent is disabled: {agent_name}")
+
+        if agent_config.embedding_model:
+            emb = agent_config.embedding_model
+            provider, model_id = emb.provider, emb.model_id
+            merged_params = {**emb.parameters, **kwargs}
+            is_valid, error_msg = self.config_manager.validate_provider(provider)
+            if not is_valid:
+                fallback = self.config_manager.primary_provider
+                logger.warning(
+                    f"Embedding provider '{provider}' for agent '{agent_name}' "
+                    f"unavailable: {error_msg}. Falling back to: {fallback}"
+                )
+                provider = fallback
+                if fallback in (emb.provider_models or {}):
+                    model_id = emb.provider_models[fallback]
+                else:
+                    provider_config = self.config_manager.get_provider_config(fallback)
+                    model_id = (
+                        provider_config.default_embedding_model
+                        if provider_config
+                        else None
+                    )
+        else:
+            provider = agent_config.primary_model.provider
+            model_id = None  # use provider default embedding model
+            merged_params = dict(kwargs)
+            is_valid, _ = self.config_manager.validate_provider(provider)
+            if not is_valid:
+                provider = self.config_manager.primary_provider
+
+        provider_config = self.config_manager.get_provider_config(provider)
+        if not provider_config:
+            raise ValueError(f"Provider configuration not found: {provider}")
+        is_valid, error_msg = self.config_manager.validate_provider(provider)
+        if not is_valid:
+            raise ValueError(f"Provider validation failed: {error_msg}")
+        return build_embeddings(provider, provider_config, model_id, **merged_params)
+
     def _create_internal(
         self, model_id: Optional[str], provider: str, **kwargs
     ) -> BaseChatModel:
@@ -265,5 +413,12 @@ def create_chat_model(
 def create_chat_model_for_agent(agent_name: str, **kwargs) -> BaseChatModel:
     """Convenience function to create a LangChain chat model for an agent."""
     return get_langchain_model_factory().create_chat_model_for_agent(
+        agent_name, **kwargs
+    )
+
+
+def create_embeddings_for_agent(agent_name: str, **kwargs):
+    """Convenience function to create LangChain embeddings for an agent."""
+    return get_langchain_model_factory().create_embeddings_for_agent(
         agent_name, **kwargs
     )
