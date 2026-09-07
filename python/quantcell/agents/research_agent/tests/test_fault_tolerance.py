@@ -1,230 +1,131 @@
+"""Fault-tolerance tests: ResearchAgent degrades gracefully without embeddings."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any, Sequence
+
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
+
+import quantcell.agents.research_agent.knowledge as knowledge_mod
+import quantcell.agents.research_agent.vdb as vdb
 
 
-def _raise_unavailable(*args, **kwargs):
-    raise ValueError("No embedding provider configured")
+def _raise_unavailable(*_args, **_kwargs):
+    raise ValueError("no embedding provider configured")
 
 
-def test_get_vector_db_returns_none_when_embedder_unavailable(monkeypatch):
-    # Cause embedder creation to fail
-    import quantcell.agents.research_agent.vdb as vdb
+@pytest.fixture(autouse=True)
+def reset_knowledge_cache():
+    knowledge_mod._knowledge_cache = None
+    yield
+    knowledge_mod._knowledge_cache = None
 
+
+def test_get_vector_db_returns_none_when_embeddings_unavailable(monkeypatch):
     monkeypatch.setattr(
-        vdb.model_utils_mod, "get_embedder_for_agent", _raise_unavailable
+        vdb.model_utils_mod, "get_embeddings_for_agent", _raise_unavailable
+    )
+    assert vdb.get_vector_db() is None
+
+
+def test_get_vector_db_returns_none_when_lancedb_init_fails(monkeypatch):
+    monkeypatch.setattr(
+        vdb.model_utils_mod, "get_embeddings_for_agent", lambda name: object()
     )
 
+    def _bad_uri():
+        raise RuntimeError("disk unavailable")
+
+    monkeypatch.setattr(vdb, "resolve_lancedb_uri", _bad_uri)
     assert vdb.get_vector_db() is None
 
 
 def test_get_knowledge_returns_none_without_embeddings(monkeypatch):
-    # Cause embedder creation to fail
-    import quantcell.agents.research_agent.vdb as vdb
-
     monkeypatch.setattr(
-        vdb.model_utils_mod, "get_embedder_for_agent", _raise_unavailable
+        vdb.model_utils_mod, "get_embeddings_for_agent", _raise_unavailable
     )
+    assert knowledge_mod.get_knowledge() is None
 
-    from quantcell.agents.research_agent.knowledge import get_knowledge
 
-    assert get_knowledge() is None
+@pytest.mark.asyncio
+async def test_insert_functions_noop_when_disabled(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        vdb.model_utils_mod, "get_embeddings_for_agent", _raise_unavailable
+    )
+    md = tmp_path / "doc.md"
+    md.write_text("# hello")
+    # Must not raise despite knowledge being disabled
+    await knowledge_mod.insert_md_file_to_knowledge("doc", md)
+    await knowledge_mod.insert_pdf_file_to_knowledge("http://example.com/x.pdf")
+
+
+class _FakeVectorStore:
+    def __init__(self):
+        self.added = []
+
+    def add_documents(self, docs):
+        self.added.extend(docs)
+
+    def similarity_search(self, query, k=10):
+        return [SimpleNamespace(page_content=f"result for {query} (k={k})")]
+
+
+@pytest.mark.asyncio
+async def test_knowledge_base_markdown_ingestion_and_search(tmp_path):
+    store = _FakeVectorStore()
+    kb = knowledge_mod.KnowledgeBase(store)
+
+    md = tmp_path / "filing.md"
+    md.write_text("# Apple 10-K\n\nRevenue grew 5% year over year.")
+    count = await kb.add_markdown_file("apple-10k", md, metadata={"ticker": "AAPL"})
+
+    assert count == len(store.added) > 0
+    assert store.added[0].metadata["name"] == "apple-10k"
+    assert store.added[0].metadata["ticker"] == "AAPL"
+
+    results = kb.search("apple revenue")
+    assert "apple revenue" in results[0].page_content
+
+
+class _FakeReactModel(GenericFakeChatModel):
+    def bind_tools(self, tools: Sequence[Any], **kwargs: Any):
+        return self
 
 
 def test_research_agent_initializes_without_knowledge_when_embeddings_missing(
     monkeypatch,
 ):
-    # Cause embedder creation to fail
-    import quantcell.agents.research_agent.vdb as vdb
-
-    monkeypatch.setattr(
-        vdb.model_utils_mod, "get_embedder_for_agent", _raise_unavailable
-    )
-
-    # Stub model creation to avoid provider requirements
-    import quantcell.utils.model as model_utils_mod
-
-    monkeypatch.setattr(model_utils_mod, "get_model_for_agent", lambda name: object())
-
-    # Replace Agent with a dummy capturing params
     import quantcell.agents.research_agent.core as core_mod
 
-    class DummyAgent:
-        def __init__(
-            self,
-            *,
-            model,
-            instructions,
-            expected_output,
-            tools,
-            knowledge,
-            db,
-            search_knowledge,
-            **kwargs,
-        ):
-            self.model = model
-            self.instructions = instructions
-            self.expected_output = expected_output
-            self.tools = tools
-            self.knowledge = knowledge
-            self.db = db
-            self.search_knowledge = search_knowledge
-
-    monkeypatch.setattr(core_mod, "Agent", DummyAgent)
-
-    from quantcell.agents.research_agent.core import ResearchAgent
-
-    ra = ResearchAgent()
-    assert ra.knowledge_research_agent.knowledge is None
-    assert ra.knowledge_research_agent.search_knowledge is False
-
-
-def test_get_vector_db_success_path(monkeypatch):
-    import quantcell.agents.research_agent.vdb as vdb
-
-    # Provide a fake embedder and LanceDb to exercise success path
+    monkeypatch.setattr(core_mod, "get_knowledge", lambda: None)
     monkeypatch.setattr(
-        vdb.model_utils_mod, "get_embedder_for_agent", lambda name: object()
+        core_mod.model_utils_mod,
+        "get_chat_model_for_agent",
+        lambda name, **kw: _FakeReactModel(messages=iter([AIMessage(content="ok")])),
     )
 
-    class DummyLanceDb:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    monkeypatch.setattr(vdb, "LanceDb", DummyLanceDb)
-
-    db = vdb.get_vector_db()
-    assert isinstance(db, DummyLanceDb)
-
-    # Exercise failure path in LanceDb constructor to cover exception branch
-    class RaisingLanceDb:
-        def __init__(self, **kwargs):
-            raise RuntimeError("boom")
-
-    monkeypatch.setattr(vdb, "LanceDb", RaisingLanceDb)
-    assert vdb.get_vector_db() is None
+    agent = core_mod.ResearchAgent()
+    assert agent.knowledge is None
+    tool_names = [getattr(t, "__name__", str(t)) for t in agent.tools]
+    assert "search_knowledge_base" not in tool_names
+    assert "web_search" in tool_names
 
 
-@pytest.mark.asyncio
-async def test_insert_functions_noop_when_disabled(monkeypatch, tmp_path):
-    # Cause embedder creation to fail
-    import quantcell.agents.research_agent.vdb as vdb
-
-    monkeypatch.setattr(
-        vdb.model_utils_mod, "get_embedder_for_agent", _raise_unavailable
-    )
-
-    from quantcell.agents.research_agent.knowledge import (
-        insert_md_file_to_knowledge,
-        insert_pdf_file_to_knowledge,
-    )
-
-    md_file = tmp_path / "doc.md"
-    md_file.write_text("# Title\nBody")
-
-    # Should not raise even though knowledge is disabled
-    await insert_md_file_to_knowledge("doc", md_file)
-    await insert_pdf_file_to_knowledge("https://example.com/doc.pdf")
-
-
-@pytest.mark.asyncio
-async def test_insert_functions_invoke_add_content_when_enabled(monkeypatch, tmp_path):
-    # Patch get_knowledge to return a dummy knowledge object
-    from quantcell.agents.research_agent import knowledge as knowledge_mod
-
-    class DummyKnowledge:
-        def __init__(self):
-            self.calls = []
-
-        async def add_content_async(self, **kwargs):
-            self.calls.append(kwargs)
-
-    dummy = DummyKnowledge()
-    monkeypatch.setattr(knowledge_mod, "_knowledge_cache", None)
-    monkeypatch.setattr(knowledge_mod, "get_knowledge", lambda: dummy)
-
-    from quantcell.agents.research_agent.knowledge import (
-        insert_md_file_to_knowledge,
-        insert_pdf_file_to_knowledge,
-    )
-
-    md_file = tmp_path / "doc2.md"
-    md_file.write_text("# Title\nBody")
-
-    await insert_md_file_to_knowledge("doc2", md_file, metadata={"k": "v"})
-    await insert_pdf_file_to_knowledge("https://example.com/doc2.pdf")
-
-    # Verify that add_content_async was called for both inserts
-    assert len(dummy.calls) == 2
-    assert any("path" in c for c in dummy.calls)
-    assert any("url" in c for c in dummy.calls)
-
-
-def test_get_knowledge_success_path_creates_and_caches(monkeypatch):
-    from quantcell.agents.research_agent import knowledge as knowledge_mod
-
-    # Use a dummy Knowledge to avoid external dependency behavior
-    class DummyKnowledge:
-        def __init__(self, *, vector_db, max_results):
-            self.vector_db = vector_db
-            self.max_results = max_results
-
-    monkeypatch.setattr(knowledge_mod, "Knowledge", DummyKnowledge)
-    monkeypatch.setattr(knowledge_mod, "_knowledge_cache", None)
-    monkeypatch.setattr(knowledge_mod, "get_vector_db", lambda: object())
-
-    from quantcell.agents.research_agent.knowledge import get_knowledge
-
-    k1 = get_knowledge()
-    k2 = get_knowledge()
-    assert isinstance(k1, DummyKnowledge)
-    assert k1 is k2  # cached
-
-
-@pytest.mark.asyncio
-async def test_stream_yields_events_without_knowledge(monkeypatch):
-    # Cause embedder creation to fail and stub model creation
-    import quantcell.agents.research_agent.vdb as vdb
-
-    monkeypatch.setattr(
-        vdb.model_utils_mod, "get_embedder_for_agent", _raise_unavailable
-    )
-
-    import quantcell.utils.model as model_utils_mod
-
-    monkeypatch.setattr(model_utils_mod, "get_model_for_agent", lambda name: object())
-
-    import types as _types
+def test_research_agent_adds_knowledge_tool_when_available(monkeypatch):
     import quantcell.agents.research_agent.core as core_mod
 
-    class DummyAgent:
-        def __init__(self, **kwargs):
-            pass
+    kb = knowledge_mod.KnowledgeBase(_FakeVectorStore())
+    monkeypatch.setattr(core_mod, "get_knowledge", lambda: kb)
+    monkeypatch.setattr(
+        core_mod.model_utils_mod,
+        "get_chat_model_for_agent",
+        lambda name, **kw: _FakeReactModel(messages=iter([AIMessage(content="ok")])),
+    )
 
-        async def arun(self, *args, **kwargs):
-            # Yield three events to exercise stream handling
-            yield _types.SimpleNamespace(event="RunContent", content="hello")
-            yield _types.SimpleNamespace(
-                event="ToolCallStarted",
-                tool=_types.SimpleNamespace(tool_call_id="id1", tool_name="foo"),
-            )
-            yield _types.SimpleNamespace(
-                event="ToolCallCompleted",
-                tool=_types.SimpleNamespace(
-                    result="ok", tool_call_id="id1", tool_name="foo"
-                ),
-            )
-
-    monkeypatch.setattr(core_mod, "Agent", DummyAgent)
-    from quantcell.agents.research_agent.core import ResearchAgent
-
-    ra = ResearchAgent()
-    # Iterate the stream to ensure branches are executed
-    events = []
-    async for ev in ra.stream(
-        query="q",
-        conversation_id="c",
-        task_id="t",
-        dependencies={"a": 1},
-    ):
-        events.append(ev)
-    # Should have yielded message chunk, tool start, tool complete, and done
-    assert len(events) == 4
+    agent = core_mod.ResearchAgent()
+    assert agent.knowledge is kb
+    tool_names = [getattr(t, "__name__", str(t)) for t in agent.tools]
+    assert "search_knowledge_base" in tool_names

@@ -210,6 +210,71 @@ def get_chat_model_for_agent(agent_name: str, **kwargs):
         raise
 
 
+def get_chat_model(env_key: str, **kwargs):
+    """
+    Get a LangChain chat model with environment variable override.
+
+    LangChain counterpart of `get_model`: uses the env var named by `env_key`
+    for the model id when set, the primary provider otherwise, with the full
+    fallback chain enabled.
+    """
+    from quantcell.adapters.models.langchain_factory import (
+        get_langchain_model_factory,
+    )
+
+    model_id = os.getenv(env_key)
+    if model_id:
+        logger.debug(f"Using model_id from {env_key}: {model_id}")
+    return get_langchain_model_factory().create_chat_model(
+        model_id=model_id, provider=None, use_fallback=True, **kwargs
+    )
+
+
+def create_chat_model_with_provider(
+    provider: str,
+    model_id: Optional[str] = None,
+    api_key: Optional[str] = None,
+    **kwargs,
+):
+    """
+    Create a LangChain chat model from a specific provider.
+
+    LangChain counterpart of `create_model_with_provider`, including per-call
+    API key override (used by trading strategies where the user supplies keys
+    per strategy). No fallback: an explicit provider request should fail loudly.
+    """
+    from quantcell.adapters.models.langchain_factory import (
+        build_chat_model,
+        get_langchain_model_factory,
+    )
+
+    if not api_key:
+        return get_langchain_model_factory().create_chat_model(
+            model_id=model_id, provider=provider, use_fallback=False, **kwargs
+        )
+
+    from quantcell.config.manager import ProviderConfig, get_config_manager
+
+    existing = get_config_manager().get_provider_config(provider)
+    if not existing:
+        raise ValueError(f"Provider configuration not found: {provider}")
+
+    overridden = ProviderConfig(
+        name=existing.name,
+        enabled=existing.enabled,
+        api_key=api_key,
+        base_url=existing.base_url,
+        default_model=existing.default_model,
+        models=existing.models,
+        parameters=existing.parameters,
+        default_embedding_model=existing.default_embedding_model,
+        embedding_models=existing.embedding_models,
+        embedding_parameters=existing.embedding_parameters,
+        extra_config=existing.extra_config,
+    )
+    return build_chat_model(provider, overridden, model_id, **kwargs)
+
+
 def get_embeddings_for_agent(agent_name: str, **kwargs):
     """
     Get LangChain embeddings configured for an agent (three-tier config).
