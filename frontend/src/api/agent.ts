@@ -1,0 +1,67 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { QUANTCELL_AGENT } from "@/constants/agent";
+import { API_QUERY_KEYS } from "@/constants/api";
+import { type ApiResponse, apiClient } from "@/lib/api-client";
+import { useLanguage } from "@/store/settings-store";
+import type { AgentInfo } from "@/types/agent";
+
+export const useGetAgentInfo = (params: { agentName: string }) => {
+  const language = useLanguage();
+
+  return useQuery({
+    queryKey: API_QUERY_KEYS.AGENT.agentInfo([
+      ...Object.values(params),
+      language,
+    ]),
+    queryFn: async () => {
+      // Return hardcoded data for QuantCellAgent
+      if (params.agentName === "QuantCellAgent") {
+        return Promise.resolve({ data: QUANTCELL_AGENT });
+      }
+      // Fetch from API for other agents
+      return apiClient.get<ApiResponse<AgentInfo>>(
+        `/agents/by-name/${params.agentName}?language=${language}`,
+      );
+    },
+    select: (data) => data.data,
+  });
+};
+
+export const useGetAgentList = (
+  params: { enabled_only: string } = { enabled_only: "false" },
+) => {
+  const language = useLanguage();
+
+  return useQuery({
+    queryKey: API_QUERY_KEYS.AGENT.agentList([
+      ...Object.values(params),
+      language,
+    ]),
+    queryFn: () =>
+      apiClient.get<ApiResponse<{ agents: AgentInfo[] }>>(
+        `/agents/?enabled_only=${params.enabled_only}&language=${language}`,
+      ),
+    select: (data) => data.data.agents,
+  });
+};
+
+export const useEnableAgent = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { agentName: string; enabled: boolean }) =>
+      apiClient.post<ApiResponse<null>>(`/agents/${params.agentName}/enable`, {
+        enabled: params.enabled,
+      }),
+    onSuccess: (_, { agentName }) => {
+      // invalidate agent list query cache to trigger re-fetch
+      queryClient.invalidateQueries({
+        queryKey: API_QUERY_KEYS.AGENT.agentInfo([agentName]),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: API_QUERY_KEYS.AGENT.agentList([]),
+      });
+    },
+  });
+};

@@ -1,0 +1,59 @@
+import { MoreVertical, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+} from "@/components/ui/item";
+import type { MemoryItem } from "@/types/setting";
+
+interface MemoryItemCardProps {
+  item: MemoryItem;
+  onDelete?: (id: MemoryItem["id"]) => void;
+}
+
+export function MemoryItemCard({ item, onDelete }: MemoryItemCardProps) {
+  const { t } = useTranslation();
+
+  return (
+    <Item variant="outline" className="rounded-xl">
+      <ItemContent>
+        <ItemDescription className="line-clamp-none text-base text-foreground">
+          {item.content}
+        </ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 hover:bg-muted"
+            >
+              <MoreVertical className="size-5 text-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onDelete?.(item.id)}
+            >
+              <Trash2 className="size-4" />
+              {t("settings.memory.delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ItemActions>
+    </Item>
+  );
+}
+
+export default MemoryItemCard;

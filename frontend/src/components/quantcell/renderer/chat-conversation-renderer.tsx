@@ -1,0 +1,83 @@
+import { parse } from "best-effort-json-parser";
+import { type FC, memo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { NavLink } from "react-router";
+import { useGetAgentInfo } from "@/api/agent";
+import { useGetConversationHistory } from "@/api/conversation";
+import ChatThreadArea from "@/app/agent/components/chat-conversation/chat-thread-area";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import AgentAvatar from "@/components/quantcell/icon/agent-avatar";
+import { useAgentStoreActions, useConversationById } from "@/store/agent-store";
+import type { ChatConversationRendererProps } from "@/types/renderer";
+
+const ChatConversationRenderer: FC<ChatConversationRendererProps> = ({
+  content,
+}) => {
+  const { t } = useTranslation();
+  // phase => 'start' | 'end'
+  const { conversation_id, agent_name, phase } = parse(content);
+  const currentConversation = useConversationById(conversation_id);
+  const { dispatchAgentStoreHistory } = useAgentStoreActions();
+
+  const { data: agent } = useGetAgentInfo({ agentName: agent_name });
+  const { data: conversationHistory } = useGetConversationHistory(
+    conversation_id,
+    [!currentConversation, phase === "end"],
+  );
+
+  useEffect(() => {
+    if (
+      conversationHistory &&
+      conversationHistory.length > 0 &&
+      phase === "end"
+    ) {
+      dispatchAgentStoreHistory(conversation_id, conversationHistory, true);
+    }
+  }, [conversationHistory, conversation_id, dispatchAgentStoreHistory, phase]);
+
+  if (!currentConversation) return null;
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-muted [&_#chat-item]:max-w-none">
+      {/* Header section */}
+      <div className="flex items-center justify-between bg-card p-4">
+        <div className="flex min-w-40 items-center gap-2 rounded-full border border-border bg-muted py-1 pr-5 pl-1.5">
+          {agent && (
+            <AgentAvatar agentName={agent.agent_name} className="size-9" />
+          )}
+          <p className="whitespace-nowrap font-normal text-base text-foreground leading-[22px]">
+            {agent?.display_name || t("agent.unknown")}
+          </p>
+        </div>
+
+        {phase === "start" && (
+          <Button
+            disabled
+            className="rounded-full px-2.5 py-1.5 font-normal text-sm"
+          >
+            <Spinner /> {t("agent.status.running")}
+          </Button>
+        )}
+
+        {phase === "end" && (
+          <NavLink
+            to={`/agent/${agent_name}?id=${conversation_id}`}
+            className="rounded-full bg-primary px-2.5 py-1.5 font-normal text-primary-foreground text-sm hover:bg-primary/90"
+          >
+            {t("agent.action.view")}
+          </NavLink>
+        )}
+      </div>
+
+      {/* Content area */}
+      <ChatThreadArea
+        className="max-h-[600px] min-w-[600px]"
+        threads={currentConversation.threads}
+        isStreaming={false}
+      />
+    </div>
+  );
+};
+
+export default memo(ChatConversationRenderer);

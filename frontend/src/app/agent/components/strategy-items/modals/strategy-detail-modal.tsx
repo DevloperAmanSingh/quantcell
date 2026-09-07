@@ -1,0 +1,189 @@
+import {
+  type FC,
+  type RefObject,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { useStrategyPerformance } from "@/api/strategy";
+import { QuantCellAgentPng } from "@/assets/png";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import CopyStrategyModal, {
+  type CopyStrategyModelRef,
+} from "@/components/quantcell/modal/copy-strategy-modal";
+import { getChangeType, numberFixed } from "@/lib/utils";
+import { useStockColors } from "@/store/settings-store";
+import { useIsLoggedIn, useSystemInfo } from "@/store/system-store";
+export interface StrategyDetailModalRef {
+  open: (strategyId: number) => void;
+}
+
+interface StrategyDetailModalProps {
+  ref?: RefObject<StrategyDetailModalRef | null>;
+}
+
+const StrategyDetailModal: FC<StrategyDetailModalProps> = ({ ref }) => {
+  const { t } = useTranslation();
+  const stockColors = useStockColors();
+  const [open, setOpen] = useState(false);
+  const [strategyId, setStrategyId] = useState<number | null>(null);
+  const copyStrategyModalRef = useRef<CopyStrategyModelRef>(null);
+  const {
+    data: strategyDetail,
+    isLoading: isLoadingStrategyDetail,
+    refetch: refetchStrategyDetail,
+  } = useStrategyPerformance(strategyId);
+  const { name, avatar } = useSystemInfo();
+  const isLoggedin = useIsLoggedIn();
+
+  useEffect(() => {
+    if (strategyId) {
+      refetchStrategyDetail();
+    }
+  }, [strategyId, refetchStrategyDetail]);
+
+  useImperativeHandle(ref, () => ({
+    open: (strategyId: number) => {
+      setStrategyId(strategyId);
+      setOpen(true);
+    },
+  }));
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent
+        className="flex max-h-[90vh] min-h-96 flex-col"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("strategy.detail.title")}</DialogTitle>
+        </DialogHeader>
+        <div className="scroll-container">
+          {isLoadingStrategyDetail || !strategyDetail ? (
+            <div className="py-8 text-center">
+              {t("strategy.detail.loading")}
+            </div>
+          ) : (
+            <div className="grid gap-4 py-4">
+              <div className="flex items-center gap-4">
+                <Avatar className="size-16">
+                  <AvatarImage
+                    src={isLoggedin ? avatar : QuantCellAgentPng}
+                    alt={name}
+                  />
+                  <AvatarFallback>{isLoggedin ? name[0] : "V"}</AvatarFallback>
+                </Avatar>
+                <h3 className="font-bold text-lg">
+                  {isLoggedin ? name : "QuantCell"}
+                </h3>
+                <div className="ml-auto text-right">
+                  <div
+                    className="font-bold text-2xl"
+                    style={{
+                      color:
+                        stockColors[
+                          getChangeType(strategyDetail.return_rate_pct)
+                        ],
+                    }}
+                  >
+                    {numberFixed(strategyDetail.return_rate_pct, 2)}%
+                  </div>
+                  <div className="text-muted-foreground text-sm">
+                    {t("strategy.detail.returnRate")}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[auto_1fr] gap-y-2 text-nowrap text-sm [&>p]:text-muted-foreground [&>span]:text-right">
+                <p>{t("strategy.detail.strategyType")}</p>
+                <span>
+                  {t(`strategy.types.${strategyDetail.strategy_type}`)}
+                </span>
+
+                <p>{t("strategy.detail.modelProvider")}</p>
+                <span>
+                  {t(`strategy.providers.${strategyDetail.llm_provider}`) ||
+                    strategyDetail.llm_provider}
+                </span>
+
+                <p>{t("strategy.detail.modelId")}</p>
+                <span>{strategyDetail.llm_model_id}</span>
+
+                <p>{t("strategy.detail.initialCapital")}</p>
+                <span>{strategyDetail.initial_capital}</span>
+
+                <p>{t("strategy.detail.maxLeverage")}</p>
+                <span>{strategyDetail.max_leverage}x</span>
+
+                <p>{t("strategy.detail.tradingSymbols")}</p>
+                <span className="whitespace-normal">
+                  {strategyDetail.symbols.join(", ")}
+                </span>
+              </div>
+
+              <div className="gap-2">
+                <span className="text-muted-foreground text-sm">
+                  {t("strategy.detail.prompt")}
+                </span>
+                <p className="rounded-md bg-muted p-3 text-foreground text-sm">
+                  {strategyDetail.prompt}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="mt-auto">
+          <Button
+            className="w-full"
+            onClick={async () => {
+              copyStrategyModalRef.current?.open({
+                llm_model_config: {
+                  provider: strategyDetail?.llm_provider || "",
+                  model_id: strategyDetail?.llm_model_id || "",
+                  api_key: "",
+                },
+                exchange_config: {
+                  exchange_id: strategyDetail?.exchange_id || "",
+                  trading_mode: strategyDetail?.trading_mode || "virtual",
+                  api_key: "",
+                  secret_key: "",
+                  passphrase: "",
+                  wallet_address: "",
+                  private_key: "",
+                },
+                trading_config: {
+                  strategy_name: "",
+                  strategy_type:
+                    strategyDetail?.strategy_type || "PromptBasedStrategy",
+                  initial_capital: strategyDetail?.initial_capital || 0,
+                  max_leverage: strategyDetail?.max_leverage || 0,
+                  symbols: strategyDetail?.symbols || [],
+                  decide_interval: strategyDetail?.decide_interval || 0,
+                  prompt: strategyDetail?.prompt || "",
+                  prompt_name: strategyDetail?.prompt_name || "",
+                },
+              });
+            }}
+          >
+            {t("strategy.action.duplicate")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+
+      <CopyStrategyModal ref={copyStrategyModalRef} />
+    </Dialog>
+  );
+};
+
+export default StrategyDetailModal;

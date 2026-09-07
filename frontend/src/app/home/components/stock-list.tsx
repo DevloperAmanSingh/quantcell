@@ -1,0 +1,61 @@
+import { memo, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router";
+import { useGetStockPrice, useGetWatchlist } from "@/api/stock";
+import {
+  StockMenu,
+  StockMenuHeader,
+  StockMenuListItem,
+} from "@/components/quantcell/menus/stock-menus";
+import type { Stock } from "@/types/stock";
+
+function StockList() {
+  const { t } = useTranslation();
+  const { pathname } = useLocation();
+  const { data: stockList } = useGetWatchlist();
+
+  const stockData = useMemo(() => {
+    return stockList?.flatMap((group) => group.items) ?? [];
+  }, [stockList]);
+
+  // Extract stock symbol (e.g., AAPL) from path like /stock/AAPL
+  const stockTicker = pathname.split("/")[3];
+
+  // define a stock item component
+  const StockItem = ({ stock }: { stock: Stock }) => {
+    const { data: stockPrice } = useGetStockPrice({ ticker: stock.ticker });
+
+    // transform data format to match StockMenuListItem expectation
+    const transformedStock = useMemo(
+      () => ({
+        symbol: stock.symbol,
+        companyName: stock.display_name,
+        price: stockPrice?.price_formatted ?? "N/A",
+        changePercent: stockPrice?.change_percent,
+      }),
+      [stock, stockPrice],
+    );
+
+    return (
+      <StockMenuListItem
+        stock={transformedStock}
+        to={`/home/stock/${stock.ticker}`}
+        isActive={stockTicker === stock.ticker}
+        replace={!!stockTicker}
+      />
+    );
+  };
+
+  return (
+    <StockMenu className="h-full">
+      <StockMenuHeader>{t("home.watchlist")}</StockMenuHeader>
+      <div className="scroll-container">
+        {stockData?.map((stock) => (
+          <StockItem key={stock.symbol} stock={stock} />
+        ))}
+      </div>
+    </StockMenu>
+  );
+}
+
+export default memo(StockList);
