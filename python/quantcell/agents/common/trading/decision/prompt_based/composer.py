@@ -4,8 +4,10 @@ import asyncio
 import json
 from typing import Dict
 
-from agno.agent import Agent as AgnoAgent
+from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
+
+from quantcell.agents.utils.structured import json_schema_instruction, parse_json_model
 
 from quantcell.utils import env as env_utils
 from quantcell.utils import model as model_utils
@@ -56,18 +58,13 @@ class LlmComposer(BaseComposer):
         self._quantity_precision = quantity_precision
         self._max_llm_wait_time_sec = max_llm_wait_time_sec
         cfg = self._request.llm_model_config
-        self._model = model_utils.create_model_with_provider(
+        self._model = model_utils.create_chat_model_with_provider(
             provider=cfg.provider,
             model_id=cfg.model_id,
             api_key=cfg.api_key,
         )
-        self.agent = AgnoAgent(
-            model=self._model,
-            output_schema=TradePlanProposal,
-            markdown=False,
-            instructions=[SYSTEM_PROMPT],
-            use_json_mode=model_utils.model_should_use_json_mode(self._model),
-            debug_mode=env_utils.agent_debug_mode_enabled(),
+        self._system_prompt = (
+            SYSTEM_PROMPT + "\n\n" + json_schema_instruction(TradePlanProposal)
         )
 
     def _build_prompt_text(self) -> str:
@@ -197,28 +194,32 @@ class LlmComposer(BaseComposer):
     async def _call_llm(self, prompt: str) -> TradePlanProposal:
         """Invoke an LLM asynchronously and parse the response into LlmPlanProposal.
 
-        This implementation follows the parser_agent pattern: it creates a model
-        via `create_model_with_provider`, wraps it in an `agno.agent.Agent` with
-        `output_schema=LlmPlanProposal`, and awaits `agent.arun(prompt)`. The
-        agent's `response.content` is returned (or validated) as a
-        `LlmPlanProposal`.
+        Invokes the strategy's configured chat model with the system prompt
+        plus a JSON-schema instruction, then parses the reply into a
+        `TradePlanProposal` (fence/prose tolerant). Validation failures return
+        an empty proposal explaining the problem.
         """
         response = await asyncio.wait_for(
-            self.agent.arun(prompt), timeout=self._max_llm_wait_time_sec
+            self._model.ainvoke(
+                [
+                    SystemMessage(content=self._system_prompt),
+                    HumanMessage(content=prompt),
+                ]
+            ),
+            timeout=self._max_llm_wait_time_sec,
         )
-        # Agent may return a raw object or a wrapper with `.content`.
-        content = getattr(response, "content", None) or response
+        content = str(getattr(response, "content", response))
         logger.debug("Received LLM response {}", content)
-        # If the agent already returned a validated model, return it directly
-        if isinstance(content, TradePlanProposal):
-            return content
+        parsed = parse_json_model(content, TradePlanProposal)
+        if parsed is not None:
+            return parsed
 
         logger.error("LLM output failed validation: {}", content)
         return TradePlanProposal(
             items=[],
             rationale=(
                 "LLM output failed validation. The model you chose "
-                f"`{model_utils.describe_model(self._model)}` "
+                f"`{model_utils.describe_chat_model(self._model)}` "
                 "may be incompatible or returned unexpected output. "
                 f"Raw output: {content}"
             ),

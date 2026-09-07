@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from agno.agent import Agent as AgnoAgent
+from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
+
+from quantcell.agents.utils.structured import json_schema_instruction, parse_json_model
 
 from quantcell.agents.common.trading.constants import (
     FEATURE_GROUP_BY_KEY,
@@ -38,7 +40,7 @@ class GridParamAdvisor:
     async def advise(self, context: ComposeContext) -> Optional[GridParamAdvice]:
         cfg = self._request.llm_model_config
         try:
-            model = model_utils.create_model_with_provider(
+            model = model_utils.create_chat_model_with_provider(
                 provider=cfg.provider,
                 model_id=cfg.model_id,
                 api_key=cfg.api_key,
@@ -169,16 +171,17 @@ class GridParamAdvisor:
                 f"{instructions}\n\nContext:\n{json.dumps(payload, ensure_ascii=False)}"
             )
 
-            agent = AgnoAgent(
-                model=model,
-                output_schema=GridParamAdvice,
-                markdown=False,
-                instructions=[SYSTEM_PROMPT],
-                use_json_mode=model_utils.model_should_use_json_mode(model),
+            system_prompt = (
+                SYSTEM_PROMPT + "\n\n" + json_schema_instruction(GridParamAdvice)
             )
-
-            response = await agent.arun(prompt)
-            content = getattr(response, "content", None) or response
+            response = await model.ainvoke(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=prompt),
+                ]
+            )
+            raw = str(getattr(response, "content", response))
+            content = parse_json_model(raw, GridParamAdvice)
             if isinstance(content, GridParamAdvice):
                 logger.info(
                     "LLM grid advice: step_pct={}, max_steps={}, base_fraction={}, lower={}, upper={}, count={}, rationale={}",
@@ -191,7 +194,7 @@ class GridParamAdvisor:
                     getattr(content, "advisor_rationale", None),
                 )
                 return content
-            logger.warning("LLM advice failed validation: {}", content)
+            logger.warning("LLM advice failed validation: {}", raw)
         except Exception as exc:
             logger.error("LLM param advisor error: {}", exc)
         return None

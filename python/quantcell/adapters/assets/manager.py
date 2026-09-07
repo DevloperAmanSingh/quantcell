@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from quantcell.utils.model import get_model
+from quantcell.utils.model import get_chat_model
 
 from .akshare_adapter import AKShareAdapter
 from .base import BaseDataAdapter
@@ -375,7 +375,7 @@ class AdapterManager:
         try:
             # Use configuration system to create model
 
-            model = get_model("PRODUCT_MODEL_ID")
+            model = get_chat_model("PRODUCT_MODEL_ID")
 
             # Create prompt to generate possible ticker formats
             system_prompt = (
@@ -409,20 +409,18 @@ Return ONLY a JSON array of ticker strings, like:
 
 Generate up to at least 1 possible ticker candidate up to 10. Be creative but realistic."""
 
-            # Use agno Agent for structured communication
-            from agno.agent import Agent
-
-            agent = Agent(
-                model=model,
-                instructions=[system_prompt],
-                markdown=False,
-            )
+            from langchain_core.messages import HumanMessage, SystemMessage
 
             # Call LLM API
-            response = agent.run(user_prompt)
+            response = model.invoke(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+            )
 
             # Parse response
-            response_text = response.content.strip()
+            response_text = str(response.content).strip()
             logger.debug(f"LLM response for query '{query.query}': {response_text}")
 
             # Extract JSON array from response (handle cases where LLM adds markdown formatting)
