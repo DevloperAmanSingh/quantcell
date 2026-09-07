@@ -29,7 +29,7 @@
 **Files:**
 - Rewrite: `python/quantcell/core/plan/tests/test_planner.py`
 
-- [ ] **Step 1:** New tests with `RecordingFakeChatModel` (same pattern as super agent tests) + stub connections exposing `get_planable_agent_cards()`:
+- [x] **Step 1:** New tests with `RecordingFakeChatModel` (same pattern as super agent tests) + stub connections exposing `get_planable_agent_cards()`:
   1. Adequate single-task reply → `ExecutionPlan` with correct Task fields (agent_name, query, title, thread_id, conversation_id)
   2. Agent catalog appears in the system prompt sent to the model (card name + description)
   3. Invalid agent name → empty tasks + guidance containing "hallucinated"
@@ -37,7 +37,7 @@
   5. Clarification cap: model returns inadequate 4× → callback invoked at most 3×, returns guidance plan
   6. Malformed reply → guidance containing "malformed"
   7. Model factory raising → guidance containing "unavailable"
-- [ ] **Step 2:** `uv run pytest quantcell/core/plan/tests/test_planner.py -q` → FAIL against old implementation.
+- [x] **Step 2:** `uv run pytest quantcell/core/plan/tests/test_planner.py -q` → FAIL against old implementation.
 
 ### Task 2: Rewrite planner on LangGraph (TDD green)
 
@@ -45,11 +45,11 @@
 - Rewrite: `python/quantcell/core/plan/planner.py` (keep `UserInputRequest`, `_create_task`, `agentcard_to_prompt`; replace Agno agent + tools with the graph)
 - Modify: `python/quantcell/core/plan/prompts.py` (tool references → "Available Agents catalog in your context")
 
-- [ ] **Step 1:** Implement per Architecture.
-- [ ] **Step 2:** `uv run pytest quantcell/core/plan -q` → all planner + thread-id + service tests PASS.
-- [ ] **Step 3:** Commit: `git commit -am "feat: migrate planner to langgraph with interrupt-based HITL"`
+- [x] **Step 1:** Implement per Architecture.
+- [x] **Step 2:** `uv run pytest quantcell/core/plan -q` → all planner + thread-id + service tests PASS.
+- [x] **Step 3:** Commit: `git commit -am "feat: migrate planner to langgraph with interrupt-based HITL"`
 
 ### Task 3: Full verification + push
 
-- [ ] **Step 1:** `uv run pytest -q` full suite green; `uv run python -c "import quantcell.server.main"` clean.
-- [ ] **Step 2:** `git push`
+- [x] **Step 1:** `uv run pytest -q` full suite green; `uv run python -c "import quantcell.server.main"` clean.
+- [x] **Step 2:** `git push`
