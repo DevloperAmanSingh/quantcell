@@ -36,6 +36,10 @@ dependencies = [
     "langchain-google-genai>=4.4.0",
     "langchain-ollama>=1.1.0",
     "langgraph>=1.2.11",
+    "langchain-community>=0.4.2",
+    "langchain-text-splitters>=1.1.2",
+    "lancedb>=0.25.2",
+    "pypdf>=6.1.1",
 ]
 
 [project.optional-dependencies]
