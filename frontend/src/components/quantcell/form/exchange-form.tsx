@@ -14,32 +14,12 @@ import { withForm } from "@/hooks/use-form";
 
 export const EXCHANGE_OPTIONS = [
   {
-    value: "okx",
-    label: "OKX",
-  },
-  {
     value: "binance",
     label: "Binance",
   },
   {
-    value: "hyperliquid",
-    label: "Hyperliquid",
-  },
-  {
-    value: "blockchaincom",
-    label: "Blockchain",
-  },
-  {
     value: "coinbaseexchange",
     label: "Coinbase",
-  },
-  {
-    value: "gate",
-    label: "Gate",
-  },
-  {
-    value: "mexc",
-    label: "MEXC",
   },
 ];
 
@@ -60,34 +40,6 @@ const getPlaceholder = (
       if (fieldType === "secret_key")
         return t("strategy.form.exchanges.placeholder.binance.secretKey");
       break;
-    case "okx":
-      if (fieldType === "api_key")
-        return t("strategy.form.exchanges.placeholder.okx.apiKey");
-      if (fieldType === "secret_key")
-        return t("strategy.form.exchanges.placeholder.okx.secretKey");
-      if (fieldType === "passphrase")
-        return t("strategy.form.exchanges.placeholder.okx.passphrase");
-      break;
-    case "gate":
-      if (fieldType === "api_key")
-        return t("strategy.form.exchanges.placeholder.gate.apiKey");
-      if (fieldType === "secret_key")
-        return t("strategy.form.exchanges.placeholder.gate.secretKey");
-      break;
-    case "hyperliquid":
-      if (fieldType === "wallet_address")
-        return t(
-          "strategy.form.exchanges.placeholder.hyperliquid.walletAddress",
-        );
-      if (fieldType === "private_key")
-        return t("strategy.form.exchanges.placeholder.hyperliquid.privateKey");
-      break;
-    case "blockchaincom":
-      if (fieldType === "api_key")
-        return t("strategy.form.exchanges.placeholder.blockchain.apiKey");
-      if (fieldType === "secret_key")
-        return t("strategy.form.exchanges.placeholder.blockchain.secretKey");
-      break;
     case "coinbaseexchange":
       if (fieldType === "api_key")
         return t("strategy.form.exchanges.placeholder.coinbase.apiKey");
@@ -95,12 +47,6 @@ const getPlaceholder = (
         return t("strategy.form.exchanges.placeholder.coinbase.secretKey");
       if (fieldType === "passphrase")
         return t("strategy.form.exchanges.placeholder.coinbase.passphrase");
-      break;
-    case "mexc":
-      if (fieldType === "api_key")
-        return t("strategy.form.exchanges.placeholder.mexc.apiKey");
-      if (fieldType === "secret_key")
-        return t("strategy.form.exchanges.placeholder.mexc.secretKey");
       break;
   }
 
@@ -159,7 +105,7 @@ export const ExchangeForm = withForm({
             onChange: ({ value }) => {
               form.reset({
                 trading_mode: value,
-                exchange_id: value === "live" ? "okx" : "",
+                exchange_id: value === "live" ? "binance" : "",
                 api_key: "",
                 secret_key: "",
                 passphrase: "",
@@ -222,36 +168,7 @@ export const ExchangeForm = withForm({
                     selector={(state) => state.values.exchange_id}
                   >
                     {(exchangeId) => {
-                      return exchangeId === "hyperliquid" ? (
-                        <>
-                          <form.AppField name="wallet_address">
-                            {(field) => (
-                              <field.TextField
-                                label={t(
-                                  "strategy.form.exchanges.walletAddress",
-                                )}
-                                placeholder={getPlaceholder(
-                                  exchangeId || "",
-                                  "wallet_address",
-                                  t,
-                                )}
-                              />
-                            )}
-                          </form.AppField>
-                          <form.AppField name="private_key">
-                            {(field) => (
-                              <field.PasswordField
-                                label={t("strategy.form.exchanges.privateKey")}
-                                placeholder={getPlaceholder(
-                                  exchangeId || "",
-                                  "private_key",
-                                  t,
-                                )}
-                              />
-                            )}
-                          </form.AppField>
-                        </>
-                      ) : (
+                      return (
                         <>
                           <form.AppField name="api_key">
                             {(field) => (
@@ -278,8 +195,7 @@ export const ExchangeForm = withForm({
                             )}
                           </form.AppField>
 
-                          {(exchangeId === "okx" ||
-                            exchangeId === "coinbaseexchange") && (
+                          {exchangeId === "coinbaseexchange" && (
                             <form.AppField name="passphrase">
                               {(field) => (
                                 <field.PasswordField

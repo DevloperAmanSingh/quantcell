@@ -302,31 +302,10 @@
             "apiKey": "輸入 API Key (64 字元)",
             "secretKey": "輸入 Secret Key (64 字元)"
           },
-          "okx": {
-            "apiKey": "輸入 API Key (格式: xxxxxxxx-xxxx-...)",
-            "secretKey": "輸入 Secret Key (32 大寫字母和數字)",
-            "passphrase": "輸入 Passphrase (API 創建時設置)"
-          },
-          "gate": {
-            "apiKey": "輸入 API Key (以 'key_' 開頭)",
-            "secretKey": "輸入 Secret Key (64 字元)"
-          },
-          "hyperliquid": {
-            "walletAddress": "輸入錢包地址 (以 '0x' 開頭)",
-            "privateKey": "輸入私鑰 (64 字元)"
-          },
-          "blockchain": {
-            "apiKey": "輸入 API Key (格式: xxxxxxxx-xxxx-...)",
-            "secretKey": "輸入 Secret Key"
-          },
           "coinbase": {
             "apiKey": "輸入 API Key (或 Key Name)",
             "secretKey": "輸入 API Secret (或 Private Key)",
             "passphrase": "輸入 Passphrase (Legacy Pro API 需要)"
-          },
-          "mexc": {
-            "apiKey": "輸入 Access Key (以 'mx0' 開頭)",
-            "secretKey": "輸入 Secret Key (通常 32 字元)"
           },
           "default": {
             "apiKey": "在此貼上 API Key",

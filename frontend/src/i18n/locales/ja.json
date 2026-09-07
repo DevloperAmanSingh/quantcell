@@ -302,31 +302,10 @@
             "apiKey": "APIキーを入力 (64文字)",
             "secretKey": "シークレットキーを入力 (64文字)"
           },
-          "okx": {
-            "apiKey": "APIキーを入力 (形式: xxxxxxxx-xxxx-...)",
-            "secretKey": "シークレットキーを入力 (32文字の大文字と数字)",
-            "passphrase": "パスフレーズを入力 (API作成時に設定)"
-          },
-          "gate": {
-            "apiKey": "APIキーを入力 ('key_'で始まる)",
-            "secretKey": "シークレットキーを入力 (64文字)"
-          },
-          "hyperliquid": {
-            "walletAddress": "ウォレットアドレスを入力 ('0x'で始まる)",
-            "privateKey": "秘密鍵を入力 (64文字)"
-          },
-          "blockchain": {
-            "apiKey": "APIキーを入力 (形式: xxxxxxxx-xxxx-...)",
-            "secretKey": "シークレットキーを入力"
-          },
           "coinbase": {
             "apiKey": "APIキーを入力 (またはキー名)",
             "secretKey": "APIシークレットを入力 (または秘密鍵)",
             "passphrase": "パスフレーズを入力 (Legacy Pro APIに必要)"
-          },
-          "mexc": {
-            "apiKey": "アクセスキーを入力 ('mx0'で始まる)",
-            "secretKey": "シークレットキーを入力 (通常32文字)"
           },
           "default": {
             "apiKey": "ここにAPIキーを貼り付け",

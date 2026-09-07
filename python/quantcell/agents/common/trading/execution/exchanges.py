@@ -43,45 +43,12 @@ SUPPORTED_EXCHANGES: Dict[str, ExchangeMetadata] = {
         testnet_supported=True,
         notes="Most popular exchange with comprehensive CCXT support",
     ),
-    "okx": ExchangeMetadata(
-        id="okx",
-        name="OKX",
-        requires_passphrase=True,
-        testnet_supported=True,
-        notes="Requires passphrase for authentication",
-    ),
-    "blockchaincom": ExchangeMetadata(
-        id="blockchaincom",
-        name="Blockchain.com",
-        requires_api_key=False,
-        notes="Only requires secret key (no API key needed)",
-    ),
     "coinbaseexchange": ExchangeMetadata(
         id="coinbaseexchange",
         name="Coinbase Exchange",
         requires_passphrase=True,
         testnet_supported=True,
         notes="Main Coinbase exchange (not Coinbase International). Requires passphrase.",
-    ),
-    "gate": ExchangeMetadata(
-        id="gate",
-        name="Gate.io",
-        testnet_supported=True,
-        notes="Gate.io main exchange with standard API key/secret authentication",
-    ),
-    "hyperliquid": ExchangeMetadata(
-        id="hyperliquid",
-        name="Hyperliquid",
-        requires_api_key=False,
-        requires_secret=False,
-        special_auth=["privateKey", "walletAddress"],
-        notes="Uses wallet-based authentication (privateKey + walletAddress). Not standard API key/secret.",
-    ),
-    "mexc": ExchangeMetadata(
-        id="mexc",
-        name="MEXC Global",
-        testnet_supported=False,
-        notes="MEXC main exchange with standard API key/secret authentication",
     ),
 }
 

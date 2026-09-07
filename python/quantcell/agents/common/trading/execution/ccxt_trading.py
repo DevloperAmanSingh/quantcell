@@ -45,8 +45,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         api_key: str = "",
         secret_key: str = "",
         passphrase: Optional[str] = None,
-        wallet_address: Optional[str] = None,
-        private_key: Optional[str] = None,
         testnet: bool = False,
         default_type: str = "swap",
         margin_mode: str = "cross",
@@ -56,12 +54,10 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         """Initialize CCXT exchange gateway.
 
         Args:
-            exchange_id: Exchange identifier (e.g., 'binance', 'okx', 'bybit', 'hyperliquid')
-            api_key: API key for authentication (not required for Hyperliquid)
-            secret_key: Secret key for authentication (not required for Hyperliquid)
-            passphrase: Optional passphrase (required for OKX, Coinbase Exchange)
-            wallet_address: Wallet address (required for Hyperliquid)
-            private_key: Private key (required for Hyperliquid)
+            exchange_id: Exchange identifier ('binance' or 'coinbaseexchange')
+            api_key: API key for authentication
+            secret_key: Secret key for authentication
+            passphrase: Optional passphrase (required for Coinbase Exchange)
             testnet: Whether to use testnet/sandbox mode
             default_type: Default market type ('spot', 'future', 'swap', "margin")
             margin_mode: Default margin mode ('isolated' or 'cross')
@@ -72,8 +68,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         self.api_key = api_key
         self.secret_key = secret_key
         self.passphrase = passphrase
-        self.wallet_address = wallet_address
-        self.private_key = private_key
         self.testnet = testnet
         self.default_type = default_type
         self.margin_mode = margin_mode
@@ -120,25 +114,13 @@ class CCXTExecutionGateway(BaseExecutionGateway):
             },
         }
 
-        # Hyperliquid uses wallet-based authentication
-        if self.exchange_id == "hyperliquid":
-            if self.wallet_address:
-                config["walletAddress"] = self.wallet_address
-            if self.private_key:
-                config["privateKey"] = self.private_key
-            # Disable builder fees by default (can be overridden in ccxt_options)
-            if "builderFee" not in config["options"]:
-                config["options"]["builderFee"] = False
-            if "approvedBuilderFee" not in config["options"]:
-                config["options"]["approvedBuilderFee"] = False
-        else:
-            # Standard API key/secret authentication
-            config["apiKey"] = self.api_key
-            config["secret"] = self.secret_key
+        # Standard API key/secret authentication
+        config["apiKey"] = self.api_key
+        config["secret"] = self.secret_key
 
-            # Add passphrase if provided (required for OKX, Coinbase Exchange)
-            if self.passphrase:
-                config["password"] = self.passphrase
+        # Add passphrase if provided (required for Coinbase Exchange)
+        if self.passphrase:
+            config["password"] = self.passphrase
 
         # Create exchange instance
         self._exchange = exchange_class(config)
@@ -218,11 +200,7 @@ class CCXTExecutionGateway(BaseExecutionGateway):
             return
 
         try:
-            # Pass marginMode for exchanges that require it (e.g., OKX)
-            params = {}
-            if self.exchange_id == "okx":
-                params["marginMode"] = self.margin_mode  # 'cross' or 'isolated'
-            await exchange.set_leverage(int(leverage), symbol, params)
+            await exchange.set_leverage(int(leverage), symbol)
             self._leverage_cache[symbol] = leverage
         except Exception as e:
             # Some exchanges don't support leverage on certain symbols
@@ -255,10 +233,8 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         """Sanitize client order id to satisfy exchange constraints.
 
         Constraints:
-        - Gate.io: max 28 chars, alphanumeric + '.-_'
-        - OKX: max 32 chars, alphanumeric only
         - Binance: max 36 chars (typically), alphanumeric + '.-_:'
-        - Others: default to 32 chars (MD5 length) for safety
+        - Others (Coinbase Exchange): default to 32 chars (MD5 length) for safety
 
         Strategy:
         1. Filter allowed characters based on exchange rules.
@@ -275,23 +251,8 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         )
         max_len = 32
 
-        if self.exchange_id == "gate":
-            # Gate.io: max 28 chars, alphanumeric + .-_ (no colon)
-            max_len = 28
-            allowed_chars = set(
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_"
-            )
-        elif self.exchange_id == "okx":
-            # OKX: max 32 chars, alphanumeric only
-            max_len = 32
-            allowed_chars = set(
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            )
-        elif self.exchange_id == "binance":
+        if self.exchange_id == "binance":
             # Binance: max 36 chars
-            max_len = 36
-        elif self.exchange_id == "bybit":
-            # Bybit: max 36 chars
             max_len = 36
 
         # Filter characters
@@ -306,21 +267,17 @@ class CCXTExecutionGateway(BaseExecutionGateway):
 
         hashed = hashlib.md5(raw_id.encode()).hexdigest()
 
-        # If hash is still too long (e.g. Gate.io 28), truncate it
+        # Truncate in case the limit is below MD5 length
         return hashed[:max_len]
 
     def _normalize_reduce_only_meta(self, meta: Dict) -> Dict:
-        """Normalize and apply reduceOnly parameter for exchange compatibility.
+        """Normalize and apply the reduceOnly parameter.
 
-        Different exchanges use different parameter names and formats:
-        - Gate.io, Bybit: use 'reduce_only' (snake_case)
-        - Binance, OKX, Hyperliquid, MEXC, Coinbase, Blockchain: use 'reduceOnly' (camelCase)
-
-        This function:
+        Binance and Coinbase Exchange both use 'reduceOnly' (camelCase). This
+        function:
         1. Extracts reduceOnly value from input (supports both camelCase and snake_case)
-        2. Sets appropriate default (False) for the exchange if not explicitly set
-        3. Applies exchange-specific parameter name
-        4. Ensures consistent boolean format across all exchanges
+        2. Sets the default (False) if not explicitly set
+        3. Ensures consistent boolean format
 
         Args:
             meta: Dictionary potentially containing reduceOnly parameters
@@ -329,60 +286,38 @@ class CCXTExecutionGateway(BaseExecutionGateway):
             Dictionary with exchange-specific reduceOnly parameter name and value
         """
         result = dict(meta or {})
-        exid = self.exchange_id.lower() if self.exchange_id else ""
 
         # Extract any existing reduceOnly value (supports both formats for flexibility)
         reduce_only_value = result.pop("reduceOnly", None)
         if reduce_only_value is None:
             reduce_only_value = result.pop("reduce_only", None)
 
-        # Determine which parameter name to use based on exchange
-        if exid in ("gate", "bybit"):
-            param_name = "reduce_only"
-        else:
-            # All other exchanges (binance, okx, hyperliquid, mexc, coinbaseexchange, blockchaincom, etc.)
-            param_name = "reduceOnly"
-
-        # Set default to False if not explicitly provided by caller
-        if reduce_only_value is None:
-            result[param_name] = False
-        else:
-            result[param_name] = bool(reduce_only_value)
-
+        result["reduceOnly"] = (
+            False if reduce_only_value is None else bool(reduce_only_value)
+        )
         return result
 
     def _build_order_params(self, inst: TradeInstruction, order_type: str) -> Dict:
         """Build exchange-specific order params with safe defaults.
 
-        - Attach clientOrderId for idempotency where supported
+        - Attach clientOrderId for idempotency
         - Provide default time-in-force for limit orders
         - Provide reduceOnly defaults for derivatives
-        - Provide tdMode for OKX if not specified
         """
         params: Dict = self._normalize_reduce_only_meta(inst.meta or {})
 
         exid = self.exchange_id
 
         # Idempotency / client order id
-        # Hyperliquid doesn't support clientOrderId
-        if exid != "hyperliquid":
-            raw_client_id = params.get("clientOrderId", inst.instruction_id)
-            if raw_client_id:
-                client_id = self._sanitize_client_order_id(raw_client_id)
-                params["clientOrderId"] = client_id
-
-        # Default tdMode for OKX on all orders
-        if exid == "okx":
-            params.setdefault(
-                "tdMode", "isolated" if self.margin_mode == "isolated" else "cross"
-            )
+        raw_client_id = params.get("clientOrderId", inst.instruction_id)
+        if raw_client_id:
+            client_id = self._sanitize_client_order_id(raw_client_id)
+            params["clientOrderId"] = client_id
 
         # Default time-in-force for limit orders
         if order_type == "limit":
             if exid == "binance":
                 params.setdefault("timeInForce", "GTC")
-            elif exid == "bybit":
-                params.setdefault("time_in_force", "GoodTillCancel")
 
         # Enforce single-sided mode: strip positionSide/posSide if present
         try:
@@ -461,87 +396,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
                     return f"notional<{min_cost}"
         return None
 
-    async def _estimate_required_margin_okx(
-        self,
-        symbol: str,
-        amount: float,
-        price: Optional[float],
-        leverage: Optional[float],
-        exchange: ccxt.Exchange,
-    ) -> Optional[float]:
-        """Estimate initial margin required for an OKX derivatives open.
-
-        If `symbol` is a derivatives contract and `amount` is in contracts (sz),
-        multiply by the contract size (`contractSize` or `info.ctVal`) to convert
-        to notional units before dividing by leverage.
-        Falls back to ticker price when `price` is not provided.
-        """
-        try:
-            lev = float(leverage or 1.0)
-            if lev <= 0:
-                lev = 1.0
-            px = float(price or 0.0)
-            if px <= 0:
-                if exchange.has.get("fetchTicker"):
-                    try:
-                        ticker = await exchange.fetch_ticker(symbol)
-                        px = float(
-                            ticker.get("last")
-                            or ticker.get("bid")
-                            or ticker.get("ask")
-                            or 0.0
-                        )
-                    except Exception:
-                        px = 0.0
-            if px <= 0:
-                return None
-
-            # Detect contract size if symbol is derivatives (OKX swap/futures)
-            ct_val: Optional[float] = None
-            try:
-                market = (getattr(exchange, "markets", {}) or {}).get(symbol) or {}
-                if market.get("contract"):
-                    try:
-                        ct_val = float(market.get("contractSize") or 0.0)
-                    except Exception:
-                        ct_val = None
-                    if not ct_val:
-                        info = market.get("info") or {}
-                        try:
-                            ct_val = float(info.get("ctVal") or 0.0)
-                        except Exception:
-                            ct_val = None
-            except Exception:
-                ct_val = None
-
-            # If ct_val is present and amount is sz (contracts), convert to notional
-            if ct_val and ct_val > 0:
-                notional = amount * ct_val * px
-            else:
-                # Fallback: treat amount as base units
-                notional = amount * px
-
-            return notional / lev * 1.02
-        except Exception:
-            return None
-
-    async def _get_free_usdt_okx(self, exchange: ccxt.Exchange) -> Optional[float]:
-        """Read available USDT from OKX unified trading account.
-
-        Explicitly queries trading balances and extracts free USDT.
-        """
-        try:
-            bal = await exchange.fetch_balance({"type": "trading"})
-            free = bal.get("free") or {}
-            usdt = free.get("USDT")
-            if usdt is None:
-                # Fallback: some ccxt versions expose totals differently
-                usdt = (bal.get("total") or {}).get("USDT")
-            return float(usdt) if usdt is not None else 0.0
-        except Exception as e:
-            logger.warning(f"⚠️ Could not fetch OKX trading balance: {e}")
-            return None
-
     async def _estimate_required_margin_binance_linear(
         self,
         symbol: str,
@@ -598,12 +452,9 @@ class CCXTExecutionGateway(BaseExecutionGateway):
     ) -> float:
         """Extract fee cost from order response with exchange-specific fallbacks.
 
-        Supports multiple exchange fee structures:
+        Supports:
         - Standard CCXT unified 'fee' field
         - Binance 'fills' array with commission details
-        - OKX 'info.fee' field
-        - Bybit 'info.cumExecFee' field
-        - Other exchange-specific formats
 
         Args:
             order: Order response from exchange
@@ -650,69 +501,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
                     if fee_cost > 0:
                         logger.debug(f"  💰 Fee from Binance fills: {fee_cost}")
                         return fee_cost
-
-            elif self.exchange_id == "okx":
-                # OKX: fee is in 'info.fee' or 'info.fillFee'
-                fee_str = info.get("fee") or info.get("fillFee")
-                if fee_str:
-                    fee_cost = abs(float(fee_str))  # OKX returns negative fee
-                    logger.debug(f"  💰 Fee from OKX info: {fee_cost}")
-                    return fee_cost
-
-            elif self.exchange_id == "bybit":
-                # Bybit: cumExecFee or execFee
-                cum_fee = info.get("cumExecFee") or info.get("execFee")
-                if cum_fee:
-                    fee_cost = float(cum_fee)
-                    logger.debug(f"  💰 Fee from Bybit info: {fee_cost}")
-                    return fee_cost
-
-            elif self.exchange_id in ("gate", "gateio"):
-                # Gate.io: fee field in info
-                fee_str = info.get("fee")
-                if fee_str:
-                    fee_cost = float(fee_str)
-                    logger.debug(f"  💰 Fee from Gate.io info: {fee_cost}")
-                    return fee_cost
-
-            elif self.exchange_id == "kucoin":
-                # KuCoin: fee in info
-                fee_str = info.get("fee")
-                if fee_str:
-                    fee_cost = float(fee_str)
-                    logger.debug(f"  💰 Fee from KuCoin info: {fee_cost}")
-                    return fee_cost
-
-            elif self.exchange_id == "mexc":
-                # MEXC: commission in fills
-                fills = info.get("fills", [])
-                if fills:
-                    for fill in fills:
-                        commission = float(fill.get("commission", 0.0))
-                        fee_cost += commission
-
-                    if fee_cost > 0:
-                        logger.debug(f"  💰 Fee from MEXC fills: {fee_cost}")
-                        return fee_cost
-
-            elif self.exchange_id == "bitget":
-                # Bitget: fee in info.feeDetail
-                fee_detail = info.get("feeDetail", {})
-                if fee_detail:
-                    total_fee = float(fee_detail.get("totalFee", 0.0))
-                    if total_fee > 0:
-                        fee_cost = total_fee
-                        logger.debug(f"  💰 Fee from Bitget info: {fee_cost}")
-                        return fee_cost
-
-            elif self.exchange_id == "hyperliquid":
-                # Hyperliquid: typically no fee field, might need special handling
-                # Check if there's a fee in info
-                fee_str = info.get("fee")
-                if fee_str:
-                    fee_cost = float(fee_str)
-                    logger.debug(f"  💰 Fee from Hyperliquid info: {fee_cost}")
-                    return fee_cost
 
             # Method 3: Estimate from trading fee rate if available (last resort)
             if fee_cost == 0.0 and filled_qty > 0 and avg_price > 0:
@@ -812,11 +600,7 @@ class CCXTExecutionGateway(BaseExecutionGateway):
     def _apply_exchange_specific_precision(
         self, symbol: str, amount: float, price: float | None, exchange: ccxt.Exchange
     ) -> tuple[float, float | None]:
-        """Apply exchange-specific precision rules.
-
-        Especially important for Hyperliquid (integers for some, decimals for others)
-        and handling min/max constraints robustly.
-        """
+        """Apply exchange precision rules, handling min/max constraints robustly."""
         try:
             # 1. Standard CCXT precision
             # Some exchanges raise errors if amount < precision (e.g. Binance)
@@ -833,18 +617,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
 
             if price is not None:
                 price = float(exchange.price_to_precision(symbol, price))
-
-            # 2. Hyperliquid specific handling
-            if self.exchange_id == "hyperliquid":
-                market = (getattr(exchange, "markets", {}) or {}).get(symbol) or {}
-                price_precision = market.get("precision", {}).get("price")
-
-                # If precision is 1.0 (integer only), force integer price
-                if price is not None and price_precision == 1.0:
-                    price = float(int(price))
-                    logger.debug(
-                        f"  🔢 Hyperliquid: Rounded price to integer {price} for {symbol}"
-                    )
 
             return amount, price
 
@@ -911,26 +683,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         amount = float(inst.quantity)
         price = float(inst.limit_price) if inst.limit_price else None
 
-        # For OKX derivatives, amount must be in contracts; convert from base units if needed
-        ct_val = None
-        try:
-            market = (getattr(exchange, "markets", {}) or {}).get(symbol) or {}
-            if self.exchange_id == "okx" and market.get("contract"):
-                try:
-                    ct_val = float(market.get("contractSize") or 0.0)
-                except Exception:
-                    ct_val = None
-                if not ct_val:
-                    info = market.get("info") or {}
-                    try:
-                        ct_val = float(info.get("ctVal") or 0.0)
-                    except Exception:
-                        ct_val = None
-                if ct_val and ct_val > 0:
-                    amount = amount / ct_val
-        except Exception:
-            pass
-
         # Apply precision
         amount, price = self._apply_exchange_specific_precision(
             symbol, amount, price, exchange
@@ -967,41 +719,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
                 reason=reject_reason,
                 meta=inst.meta,
             )
-
-        # OKX trading account margin precheck for open orders
-        if self.exchange_id == "okx":
-            try:
-                # Determine open vs close intent from default reduceOnly flags
-                provisional = self._build_order_params(inst, order_type)
-                is_close = bool(
-                    provisional.get("reduceOnly") or provisional.get("reduce_only")
-                )
-                if not is_close:
-                    required = await self._estimate_required_margin_okx(
-                        symbol, amount, price, inst.leverage, exchange
-                    )
-                    free_usdt = await self._get_free_usdt_okx(exchange)
-                    if (
-                        required is not None
-                        and free_usdt is not None
-                        and free_usdt < required
-                    ):
-                        reject_reason = f"insufficient_margin:need~{required:.6f}USDT,free~{free_usdt:.6f}USDT"
-                        logger.warning(f"  🚫 Skipping order due to {reject_reason}")
-                        return TxResult(
-                            instruction_id=inst.instruction_id,
-                            instrument=inst.instrument,
-                            side=local_side,
-                            requested_qty=float(inst.quantity),
-                            filled_qty=0.0,
-                            status=TxStatus.REJECTED,
-                            reason=reject_reason,
-                            meta=inst.meta,
-                        )
-            except Exception as e:
-                logger.warning(
-                    f"⚠️ OKX margin precheck failed, proceeding without precheck: {e}"
-                )
 
         # Binance USDT-M linear futures margin precheck for open orders
         if self.exchange_id == "binance":
@@ -1072,49 +789,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         except Exception:
             pass
 
-        # Hyperliquid special handling for market orders
-        # Hyperliquid doesn't have true market orders; use IoC (Immediate or Cancel) to simulate
-        if self.exchange_id == "hyperliquid" and order_type == "market":
-            try:
-                logger.debug(
-                    "  📊 Hyperliquid: Converting market order to IoC limit order"
-                )
-
-                # Fetch current market price
-                if price is None:
-                    ticker = await exchange.fetch_ticker(symbol)
-                    price = float(ticker.get("last") or ticker.get("close") or 0.0)
-
-                if price > 0:
-                    # Calculate slippage price based on direction
-                    slippage_pct = (
-                        inst.max_slippage_bps or 50.0
-                    ) / 10000.0  # default 50 bps = 0.5%
-                    if side == "buy":
-                        # For buy orders, set price higher to ensure execution
-                        price = price * (1 + slippage_pct)
-                    else:
-                        # For sell orders, set price lower to ensure execution
-                        price = price * (1 - slippage_pct)
-
-                    # Apply precision again on the simulated price
-                    _, price = self._apply_exchange_specific_precision(
-                        symbol, amount, price, exchange
-                    )
-
-                    # Use IoC (Immediate or Cancel) to simulate market execution
-                    params["timeInForce"] = "Ioc"
-                    logger.debug(
-                        f"  💰 Using IoC limit order: {side} @ {price} (slippage: {slippage_pct:.2%})"
-                    )
-                else:
-                    logger.warning(
-                        f"  ⚠️ Could not determine market price for {symbol}, will try without price"
-                    )
-            except Exception as e:
-                logger.warning(f"  ⚠️ Could not setup Hyperliquid market order: {e}")
-                # Fallback: let exchange handle it
-
         # Create order
         try:
             logger.info(
@@ -1178,10 +852,6 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         # Parse order response
         filled_qty = float(order.get("filled", 0.0))
 
-        # For OKX derivatives, filled quantity is in contracts; convert back to base units
-        if self.exchange_id == "okx" and ct_val and ct_val > 0 and filled_qty > 0:
-            filled_qty = filled_qty * ct_val
-
         avg_price = float(order.get("average") or 0.0)
         fee_cost = 0.0
 
@@ -1224,42 +894,26 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         self, inst: TradeInstruction, exchange: ccxt.Exchange
     ) -> TxResult:
         # Ensure we do not mark reduceOnly on open
-        # Use exchange-specific param name
-        if self.exchange_id == "bybit":
-            overrides = {"reduce_only": False}
-        else:
-            overrides = {"reduceOnly": False}
+        overrides = {"reduceOnly": False}
         return await self._submit_order(inst, exchange, overrides)
 
     async def _exec_open_short(
         self, inst: TradeInstruction, exchange: ccxt.Exchange
     ) -> TxResult:
-        # Use exchange-specific param name
-        if self.exchange_id == "bybit":
-            overrides = {"reduce_only": False}
-        else:
-            overrides = {"reduceOnly": False}
+        overrides = {"reduceOnly": False}
         return await self._submit_order(inst, exchange, overrides)
 
     async def _exec_close_long(
         self, inst: TradeInstruction, exchange: ccxt.Exchange
     ) -> TxResult:
         # Force reduceOnly flags for closes
-        # Use exchange-specific param name
-        if self.exchange_id == "bybit":
-            overrides = {"reduce_only": True}
-        else:
-            overrides = {"reduceOnly": True}
+        overrides = {"reduceOnly": True}
         return await self._submit_order(inst, exchange, overrides)
 
     async def _exec_close_short(
         self, inst: TradeInstruction, exchange: ccxt.Exchange
     ) -> TxResult:
-        # Use exchange-specific param name
-        if self.exchange_id == "bybit":
-            overrides = {"reduce_only": True}
-        else:
-            overrides = {"reduceOnly": True}
+        overrides = {"reduceOnly": True}
         return await self._submit_order(inst, exchange, overrides)
 
     async def _exec_noop(self, inst: TradeInstruction) -> TxResult:
@@ -1374,8 +1028,6 @@ async def create_ccxt_gateway(
     api_key: str,
     secret_key: str,
     passphrase: Optional[str] = None,
-    wallet_address: Optional[str] = None,
-    private_key: Optional[str] = None,
     testnet: bool = False,
     market_type: str = "swap",
     margin_mode: str = "cross",
@@ -1385,12 +1037,10 @@ async def create_ccxt_gateway(
     """Factory function to create and initialize a CCXT execution gateway.
 
     Args:
-        exchange_id: Exchange identifier (e.g., 'binance', 'okx', 'bybit', 'hyperliquid')
-        api_key: API key for authentication (not required for Hyperliquid)
-        secret_key: Secret key for authentication (not required for Hyperliquid)
-        passphrase: Optional passphrase (required for OKX)
-        wallet_address: Wallet address (required for Hyperliquid)
-        private_key: Private key (required for Hyperliquid)
+        exchange_id: Exchange identifier ('binance' or 'coinbaseexchange')
+        api_key: API key for authentication
+        secret_key: Secret key for authentication
+        passphrase: Optional passphrase (required for Coinbase Exchange)
         testnet: Whether to use testnet/sandbox mode
         market_type: Market type ('spot', 'future', 'swap')
         margin_mode: Margin mode ('isolated' or 'cross')
@@ -1416,8 +1066,6 @@ async def create_ccxt_gateway(
         api_key=api_key,
         secret_key=secret_key,
         passphrase=passphrase,
-        wallet_address=wallet_address,
-        private_key=private_key,
         testnet=testnet,
         default_type=market_type,
         margin_mode=margin_mode,

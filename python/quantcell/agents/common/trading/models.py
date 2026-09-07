@@ -153,7 +153,7 @@ class ExchangeConfig(BaseModel):
 
     exchange_id: Optional[str] = Field(
         default=None,
-        description="Exchange identifier (e.g., 'okx', 'binance', 'bybit')",
+        description="Exchange identifier ('binance' or 'coinbaseexchange')",
     )
     trading_mode: TradingMode = Field(
         default=TradingMode.VIRTUAL, description="Trading mode for this strategy"
@@ -166,15 +166,15 @@ class ExchangeConfig(BaseModel):
     )
     passphrase: Optional[str] = Field(
         default=None,
-        description="API passphrase (required for some exchanges like OKX)",
+        description="API passphrase (required for Coinbase Exchange)",
     )
     wallet_address: Optional[str] = Field(
         default=None,
-        description="Wallet address (required for Hyperliquid)",
+        description="Wallet address (unused; retained for schema compatibility)",
     )
     private_key: Optional[str] = Field(
         default=None,
-        description="Private key (required for Hyperliquid)",
+        description="Private key (unused; retained for schema compatibility)",
     )
     testnet: bool = Field(
         default=False, description="Use testnet/sandbox mode for testing"

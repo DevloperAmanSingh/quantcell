@@ -27,15 +27,14 @@ class SimpleMarketDataSource(BaseMarketDataSource):
 
     def __init__(self, exchange_id: Optional[str] = None) -> None:
         if not exchange_id:
-            self._exchange_id = "okx"
+            self._exchange_id = "binance"
         else:
             self._exchange_id = exchange_id
 
     def _normalize_symbol(self, symbol: str) -> str:
         """Normalize symbol format for specific exchanges.
 
-        For Hyperliquid: converts BTC-USDC to BTC/USDC:USDC (swap format)
-        For other exchanges: converts BTC-USDC to BTC/USDC:USDC
+        Converts BTC-USDC to BTC/USDC:USDC (settlement-currency swap format)
 
         Args:
             symbol: Symbol in format 'BTC-USDC', 'ETH-USDT', etc.

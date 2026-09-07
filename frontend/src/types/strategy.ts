@@ -89,11 +89,11 @@ export interface CreateStrategy {
 
   // Exchange Configuration
   exchange_config: {
-    exchange_id: string; // e.g. 'okx'
+    exchange_id: string; // e.g. 'binance'
     trading_mode: "live" | "virtual";
     api_key: string;
     secret_key: string;
-    passphrase: string; // Required for some exchanges like OKX
+    passphrase: string; // Required for Coinbase Exchange
     wallet_address: string;
     private_key: string;
   };
@@ -121,11 +121,11 @@ export interface CopyStrategy {
 
   // Exchange Configuration
   exchange_config: {
-    exchange_id: string; // e.g. 'okx'
+    exchange_id: string; // e.g. 'binance'
     trading_mode: "live" | "virtual";
     api_key: string;
     secret_key: string;
-    passphrase: string; // Required for some exchanges like OKX
+    passphrase: string; // Required for Coinbase Exchange
     wallet_address: string;
     private_key: string;
   };

@@ -302,31 +302,10 @@
             "apiKey": "输入API Key (64字符)",
             "secretKey": "输入Secret Key (64字符)"
           },
-          "okx": {
-            "apiKey": "输入API Key (格式: xxxxxxxx-xxxx-...)",
-            "secretKey": "输入Secret Key (32大写字母和数字)",
-            "passphrase": "输入Passphrase (API创建时设置)"
-          },
-          "gate": {
-            "apiKey": "输入API Key (以'key_'开头)",
-            "secretKey": "输入Secret Key (64字符)"
-          },
-          "hyperliquid": {
-            "walletAddress": "输入钱包地址 (以'0x'开头)",
-            "privateKey": "输入私钥 (64字符)"
-          },
-          "blockchain": {
-            "apiKey": "输入API Key (格式: xxxxxxxx-xxxx-...)",
-            "secretKey": "输入Secret Key"
-          },
           "coinbase": {
             "apiKey": "输入API Key (或Key Name)",
             "secretKey": "输入API Secret (或Private Key)",
             "passphrase": "输入Passphrase (Legacy Pro API需要)"
-          },
-          "mexc": {
-            "apiKey": "输入Access Key (以 'mx0' 开头)",
-            "secretKey": "输入Secret Key (通常32字符)"
           },
           "default": {
             "apiKey": "在此粘贴API Key",

@@ -25,24 +25,11 @@ export const createExchangeSchema = (t: TFunction) =>
       trading_mode: z.literal("virtual"),
     }),
 
-    // Live Trading - Hyperliquid
+    // Live Trading - Coinbase Exchange (Requires Passphrase)
     z.object({
       ...baseStep2Fields,
       trading_mode: z.literal("live"),
-      exchange_id: z.literal("hyperliquid"),
-      wallet_address: z
-        .string()
-        .min(1, t("validation.exchange.walletAddressHyperliquidRequired")),
-      private_key: z
-        .string()
-        .min(1, t("validation.exchange.privateKeyHyperliquidRequired")),
-    }),
-
-    // Live Trading - OKX & Coinbase (Require Passphrase)
-    z.object({
-      ...baseStep2Fields,
-      trading_mode: z.literal("live"),
-      exchange_id: z.enum(["okx", "coinbaseexchange"]),
+      exchange_id: z.literal("coinbaseexchange"),
       api_key: z.string().min(1, t("validation.exchange.apiKeyRequired")),
       secret_key: z.string().min(1, t("validation.exchange.secretKeyRequired")),
       passphrase: z
@@ -50,11 +37,11 @@ export const createExchangeSchema = (t: TFunction) =>
         .min(1, t("validation.exchange.passphraseRequired")),
     }),
 
-    // Live Trading - Standard Exchanges
+    // Live Trading - Binance
     z.object({
       ...baseStep2Fields,
       trading_mode: z.literal("live"),
-      exchange_id: z.enum(["binance", "blockchaincom", "gate", "mexc"]),
+      exchange_id: z.literal("binance"),
       api_key: z.string().min(1, t("validation.exchange.apiKeyRequired")),
       secret_key: z.string().min(1, t("validation.exchange.secretKeyRequired")),
     }),

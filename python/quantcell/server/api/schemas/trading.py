@@ -25,7 +25,7 @@ class PositionItem(BaseModel):
 class OpenPositionsData(BaseModel):
     """Container of open positions for the account."""
 
-    exchange: str = Field(..., description="Exchange identifier, e.g. okx")
+    exchange: str = Field(..., description="Exchange identifier, e.g. binance")
     network: Optional[str] = Field(None, description="Network or environment")
     positions: List[PositionItem] = Field(default_factory=list)
 

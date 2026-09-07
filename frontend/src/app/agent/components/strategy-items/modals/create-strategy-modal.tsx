@@ -93,7 +93,7 @@ const CreateStrategyModal: FC<CreateStrategyModalProps> = ({
   const form2 = useAppForm({
     defaultValues: {
       trading_mode: "live" as "live" | "virtual",
-      exchange_id: "okx",
+      exchange_id: "binance",
       api_key: "",
       secret_key: "",
       passphrase: "",

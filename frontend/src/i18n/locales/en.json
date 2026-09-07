@@ -302,31 +302,10 @@
             "apiKey": "Enter API Key (64 characters)",
             "secretKey": "Enter Secret Key (64 characters)"
           },
-          "okx": {
-            "apiKey": "Enter API Key (Format: xxxxxxxx-xxxx-...)",
-            "secretKey": "Enter Secret Key (32 uppercase letters & numbers)",
-            "passphrase": "Enter Passphrase (Set during API creation)"
-          },
-          "gate": {
-            "apiKey": "Enter API Key (Starts with 'key_')",
-            "secretKey": "Enter Secret Key (64 characters)"
-          },
-          "hyperliquid": {
-            "walletAddress": "Enter Wallet Address (Starts with '0x')",
-            "privateKey": "Enter Private Key (64 characters)"
-          },
-          "blockchain": {
-            "apiKey": "Enter API Key (Format: xxxxxxxx-xxxx-...)",
-            "secretKey": "Enter Secret Key"
-          },
           "coinbase": {
             "apiKey": "Enter API Key (or Key Name)",
             "secretKey": "Enter API Secret (or Private Key)",
             "passphrase": "Enter Passphrase (Required for Legacy Pro API)"
-          },
-          "mexc": {
-            "apiKey": "Enter Access Key (Starts with 'mx0')",
-            "secretKey": "Enter Secret Key (Usually 32 characters)"
           },
           "default": {
             "apiKey": "Paste your API Key here",

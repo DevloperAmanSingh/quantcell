@@ -100,7 +100,7 @@ async def fetch_free_cash_from_gateway(
         for q in quotes:
             free_cash += float(free_map.get(q, 0.0) or 0.0)
             # Try to find total/equity in balance if available (often 'total' dict in CCXT)
-            # Hyperliquid/CCXT structure: balance[q]['total']
+            # CCXT structure: balance[q]['total']
             q_data = balance.get(q)
             if isinstance(q_data, dict):
                 total_cash += float(q_data.get("total", 0.0) or 0.0)

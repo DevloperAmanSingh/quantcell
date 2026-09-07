@@ -99,7 +99,7 @@ const CopyStrategyModal: FC<CopyStrategyModalProps> = ({
   const form2 = useAppForm({
     defaultValues: defaultValues?.exchange_config || {
       trading_mode: "live" as "live" | "virtual",
-      exchange_id: "okx",
+      exchange_id: "binance",
       api_key: "",
       secret_key: "",
       passphrase: "",
