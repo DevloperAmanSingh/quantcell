@@ -46,7 +46,12 @@ if (-not (Test-Path ".venv")) {
 }
 Highlight-Command "uv sync --group dev"
 uv sync --group dev
-uvx playwright install --with-deps chromium
+if ($env:INSTALL_BROWSER -eq "1") {
+    # Chromium is only needed by the optional RootData crypto scraper
+    uvx playwright install --with-deps chromium
+} else {
+    Write-Host "Skipping Chromium install (set INSTALL_BROWSER=1 to enable the crypto scraper's browser fallback)." -ForegroundColor Yellow
+}
 Write-Success "Main environment setup complete."
 
 Write-Success "=========================================="

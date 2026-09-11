@@ -49,7 +49,13 @@ else
 fi
 highlight_command "uv sync --group dev"
 uv sync --group dev
-uvx playwright install --with-deps chromium
+# Chromium is only needed by the optional RootData crypto scraper
+# (quantcell/agents/sources/rootdata.py). Opt in with INSTALL_BROWSER=1.
+if [[ "${INSTALL_BROWSER:-0}" == "1" ]]; then
+    uvx playwright install --with-deps chromium || echo -e "${YELLOW}Browser install failed; continuing (only the crypto scraper needs it).${NC}"
+else
+    echo -e "${YELLOW}Skipping Chromium install (set INSTALL_BROWSER=1 to enable the crypto scraper's browser fallback).${NC}"
+fi
 echo -e "${GREEN}Main environment setup complete.${NC}"
 
 echo -e "${GREEN}==========================================${NC}"
