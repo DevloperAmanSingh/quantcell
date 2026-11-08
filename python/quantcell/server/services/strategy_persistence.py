@@ -3,7 +3,7 @@ from typing import Optional
 
 from loguru import logger
 
-from quantcell.agents.common.trading import models as agent_models
+from quantcell.agents.trading import models as agent_models
 from quantcell.server.db.repositories.strategy_repository import (
     get_strategy_repository,
 )

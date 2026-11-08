@@ -20,7 +20,7 @@
 - [x] `core/plan/prompts.py` (instruction + expected output, examples restructured)
 - [x] `agents/research_agent/prompts.py`
 - [x] `agents/news_agent/prompts.py`
-- [x] `agents/common/trading/decision/prompt_based/system_prompt.py` + grid advisor SYSTEM_PROMPT (reword prose, preserve every constraint literally)
+- [x] `agents/trading/decision/prompt_based/system_prompt.py` + grid advisor SYSTEM_PROMPT (reword prose, preserve every constraint literally)
 - [x] `uv run pytest -q` green; commit `refactor: rewrite agent prompts in quantcell voice`
 
 ### Task 2: Event-driven planner monitoring

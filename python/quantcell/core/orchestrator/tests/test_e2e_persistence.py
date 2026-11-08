@@ -1,0 +1,59 @@
+import asyncio
+
+import pytest
+
+from quantcell.core.orchestrator.orchestrator import AgentOrchestrator
+from quantcell.core.types import UserInput, UserInputMetadata
+import quantcell.utils.model as model_utils_mod
+
+
+def _no_model(*_args, **_kwargs):
+    raise ValueError("no model configured in e2e persistence test")
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_buffer_store_e2e(tmp_path, monkeypatch):
+    db_path = tmp_path / "e2e_quantcell.db"
+    # Use DATABASE_URL for tests; utils resolve_db_path will honor sqlite DSN
+    monkeypatch.setenv("QUANTCELL_DATABASE_URL", f"sqlite:///{db_path}")
+
+    # No live model: super agent / planner must degrade gracefully and the
+    # buffer -> store path must still persist conversation items.
+    monkeypatch.setattr(model_utils_mod, "get_chat_model_for_agent", _no_model)
+    monkeypatch.setattr(model_utils_mod, "get_embeddings_for_agent", _no_model)
+
+    orch = AgentOrchestrator()
+
+    # Prepare a conversation and a simple query; orchestrator will create the conversation if missing
+    conversation_id = "e2e-conversation"
+    user_id = "e2e-user"
+    ui = UserInput(
+        query="hello world",
+        target_agent_name="TestAgent",
+        meta=UserInputMetadata(conversation_id=conversation_id, user_id=user_id),
+    )
+
+    # We don't have a live agent, so we expect planner/agent logic to raise; we just want to ensure
+    # that at least conversation_started and done/error go through the buffer->store path without crashing.
+    out = []
+    try:
+        async for resp in orch.process_user_input(ui):
+            out.append(resp)
+            # allow buffer debounce tick
+            await asyncio.sleep(0)
+    except Exception:
+        # Orchestrator is defensive, should not raise; but in case, we still proceed to check persistence
+        pass
+
+    # Verify persistence: at least 1 message exists for conversation
+    msgs = await orch.conversation_service.manager.get_conversation_items(
+        conversation_id
+    )
+    assert isinstance(msgs, list)
+    assert len(msgs) >= 1
+
+    # Also verify we can count and fetch latest
+    cnt = await orch.conversation_service.manager.get_item_count(conversation_id)
+    assert cnt == len(msgs)
+    latest = await orch.conversation_service.manager.get_latest_item(conversation_id)
+    assert latest is not None

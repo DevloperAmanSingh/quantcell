@@ -8,7 +8,7 @@ from typing import AsyncGenerator, Optional
 from loguru import logger
 
 from quantcell.core.agent.connect import RemoteConnections
-from quantcell.core.coordinate.orchestrator import AgentOrchestrator
+from quantcell.core.orchestrator.orchestrator import AgentOrchestrator
 from quantcell.core.task.executor import TaskExecutor
 from quantcell.core.task.locator import get_task_service
 from quantcell.core.task.models import TaskPattern, TaskStatus

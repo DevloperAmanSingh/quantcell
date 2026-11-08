@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Path, Query
 from starlette.concurrency import run_in_threadpool
 
-from ....utils.i18n_utils import parse_and_validate_utc_dates
+from ....utils.i18n import parse_and_validate_utc_dates
 from ...db.repositories.watchlist_repository import get_watchlist_repository
 from ...services.assets.asset_service import get_asset_service
 from ..schemas import (
@@ -520,7 +520,7 @@ def create_watchlist_router() -> APIRouter:
     ):
         """Get historical prices for a asset."""
         try:
-            # Parse and validate UTC dates using i18n_utils
+            # Parse and validate UTC dates using utils.i18n
             start_dt, end_dt = parse_and_validate_utc_dates(start_date, end_date)
 
             # Get historical price data

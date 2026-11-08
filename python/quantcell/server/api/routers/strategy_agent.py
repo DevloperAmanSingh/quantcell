@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from quantcell.agents.common.trading.models import (
+from quantcell.agents.trading.models import (
     ExchangeConfig,
     StrategyStatus,
     StrategyStatusContent,
@@ -18,7 +18,7 @@ from quantcell.agents.common.trading.models import (
     UserRequest,
 )
 from quantcell.config.loader import get_config_loader
-from quantcell.core.coordinate.orchestrator import AgentOrchestrator
+from quantcell.core.orchestrator.orchestrator import AgentOrchestrator
 from quantcell.core.types import CommonResponseEvent, UserInput, UserInputMetadata
 from quantcell.server.api.schemas.base import ErrorResponse, StatusCode, SuccessResponse
 
@@ -255,7 +255,7 @@ def create_strategy_agent_router() -> APIRouter:
             if getattr(request, "trading_mode", None) == "virtual":
                 return SuccessResponse.create(msg="Success!")
 
-            from quantcell.agents.common.trading.execution.ccxt_trading import (
+            from quantcell.agents.trading.execution.ccxt_trading import (
                 create_ccxt_gateway,
             )
 

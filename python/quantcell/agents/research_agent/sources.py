@@ -11,7 +11,7 @@ from edgar import Company
 from edgar.entity.filings import EntityFilings
 from loguru import logger
 
-from quantcell.agents.sources import (
+from quantcell.adapters.crypto import (
     get_person_detail,
     get_project_detail,
     get_vc_detail,

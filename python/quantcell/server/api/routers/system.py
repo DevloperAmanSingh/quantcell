@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 
 from ....config.constants import REGION_DEFAULT_TICKERS
-from ....utils.i18n_utils import detect_user_region_async
+from ....utils.i18n import detect_user_region_async
 from ...config.settings import get_settings
 from ..schemas import AppInfoData, HealthCheckData, SuccessResponse
 

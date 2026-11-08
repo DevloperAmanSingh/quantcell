@@ -50,7 +50,7 @@ fi
 highlight_command "uv sync --group dev"
 uv sync --group dev
 # Chromium is only needed by the optional RootData crypto scraper
-# (quantcell/agents/sources/rootdata.py). Opt in with INSTALL_BROWSER=1.
+# (quantcell/adapters/crypto/rootdata.py). Opt in with INSTALL_BROWSER=1.
 if [[ "${INSTALL_BROWSER:-0}" == "1" ]]; then
     uvx playwright install --with-deps chromium || echo -e "${YELLOW}Browser install failed; continuing (only the crypto scraper needs it).${NC}"
 else

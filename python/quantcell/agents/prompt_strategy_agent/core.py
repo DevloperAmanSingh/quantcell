@@ -7,13 +7,13 @@ extend this class or StrategyAgent directly for custom strategies.
 
 from __future__ import annotations
 
-from quantcell.agents.common.trading.base_agent import BaseStrategyAgent
-from quantcell.agents.common.trading.decision import BaseComposer, LlmComposer
-from quantcell.agents.common.trading.features import (
+from quantcell.agents.trading.base_agent import BaseStrategyAgent
+from quantcell.agents.trading.decision import BaseComposer, LlmComposer
+from quantcell.agents.trading.features import (
     BaseFeaturesPipeline,
     DefaultFeaturesPipeline,
 )
-from quantcell.agents.common.trading.models import UserRequest
+from quantcell.agents.trading.models import UserRequest
 
 
 class PromptBasedStrategyAgent(BaseStrategyAgent):

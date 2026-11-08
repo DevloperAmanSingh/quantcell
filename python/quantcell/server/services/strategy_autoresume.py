@@ -26,13 +26,13 @@ from typing import Optional
 
 from loguru import logger
 
-from quantcell.agents.common.trading.models import (
+from quantcell.agents.trading.models import (
     StopReason,
     StrategyStatus,
     StrategyStatusContent,
     UserRequest,
 )
-from quantcell.core.coordinate.orchestrator import AgentOrchestrator
+from quantcell.core.orchestrator.orchestrator import AgentOrchestrator
 from quantcell.core.types import CommonResponseEvent, UserInput, UserInputMetadata
 from quantcell.server.db.models.strategy import Strategy
 from quantcell.server.db.repositories.strategy_repository import get_strategy_repository

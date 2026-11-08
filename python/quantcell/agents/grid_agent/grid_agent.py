@@ -12,14 +12,14 @@ Usage:
 
 from __future__ import annotations
 
-from quantcell.agents.common.trading.base_agent import BaseStrategyAgent
-from quantcell.agents.common.trading.decision.grid_composer.grid_composer import (
+from quantcell.agents.trading.base_agent import BaseStrategyAgent
+from quantcell.agents.trading.decision.grid_composer.grid_composer import (
     GridComposer,
 )
-from quantcell.agents.common.trading.decision.interfaces import BaseComposer
-from quantcell.agents.common.trading.features.interfaces import BaseFeaturesPipeline
-from quantcell.agents.common.trading.features.pipeline import DefaultFeaturesPipeline
-from quantcell.agents.common.trading.models import UserRequest
+from quantcell.agents.trading.decision.interfaces import BaseComposer
+from quantcell.agents.trading.features.interfaces import BaseFeaturesPipeline
+from quantcell.agents.trading.features.pipeline import DefaultFeaturesPipeline
+from quantcell.agents.trading.models import UserRequest
 
 
 class GridStrategyAgent(BaseStrategyAgent):

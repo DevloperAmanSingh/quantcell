@@ -31,8 +31,8 @@ from quantcell.core.types import (
     StreamResponseEvent,
     SubagentConversationPhase,
 )
-from quantcell.utils.i18n_utils import get_current_language, get_current_timezone
-from quantcell.utils.user_profile_utils import get_user_profile_metadata
+from quantcell.utils.i18n import get_current_language, get_current_timezone
+from quantcell.utils.user_profile import get_user_profile_metadata
 from quantcell.utils.uuid import generate_item_id, generate_task_id, generate_uuid
 
 
