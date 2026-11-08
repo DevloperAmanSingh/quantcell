@@ -4,7 +4,7 @@
     "description": "Manage your preferences and application settings.",
     "account": {
       "title": "Account",
-      "signInDesc": "Sign in to get started with Valuecell AI features.",
+      "signInDesc": "Sign in to get started with QuantCell AI features.",
       "signOut": "Sign Out",
       "signIn": "Sign In"
     },

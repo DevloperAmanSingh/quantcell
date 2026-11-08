@@ -69,6 +69,6 @@ To contribute a new agent, see [docs/CONTRIBUTE_AN_AGENT.md](./docs/CONTRIBUTE_A
 
 ## License
 
-Licensed under the **Apache License 2.0** — see [LICENSE](./LICENSE). QuantCell includes code derived from the ValueCell project; see [NOTICE](./NOTICE) for attribution.
+Licensed under the **Apache License 2.0** — see [LICENSE](./LICENSE). See [NOTICE](./NOTICE) for third-party attribution.
 
 Third-party services embedded or integrated (TradingView widgets, exchange APIs, LLM providers) are governed by their own terms.

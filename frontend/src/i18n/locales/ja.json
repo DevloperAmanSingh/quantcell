@@ -4,7 +4,7 @@
     "description": "設定とアプリケーションの管理。",
     "account": {
       "title": "アカウント",
-      "signInDesc": "Valuecell AI 機能を開始するにはサインインしてください。",
+      "signInDesc": "QuantCell AI 機能を開始するにはサインインしてください。",
       "signOut": "サインアウト",
       "signIn": "サインイン"
     },

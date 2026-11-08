@@ -3,7 +3,7 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useBackendHealth } from "@/api/system";
-import ValuecellLogo from "@/assets/png/logo/quantcell-logo.webp";
+import QuantCellLogo from "@/assets/png/logo/quantcell-logo.webp";
 import { Progress } from "@/components/ui/progress";
 
 export function BackendHealthCheck({
@@ -80,8 +80,8 @@ export function BackendHealthCheck({
               className="relative z-10"
             >
               <img
-                src={ValuecellLogo}
-                alt="Valuecell Logo"
+                src={QuantCellLogo}
+                alt="QuantCell Logo"
                 className="size-52 object-contain"
               />
             </motion.div>

@@ -4,7 +4,7 @@
     "description": "管理您的首选项和应用程序设置。",
     "account": {
       "title": "账户",
-      "signInDesc": "登录以开始使用 Valuecell AI 功能。",
+      "signInDesc": "登录以开始使用 QuantCell AI 功能。",
       "signOut": "退出登录",
       "signIn": "登录"
     },

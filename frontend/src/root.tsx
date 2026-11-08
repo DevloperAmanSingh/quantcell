@@ -25,7 +25,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta charSet="UTF-8" />
         <link rel="icon" type="image/svg+xml" href="/logo.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Value Cell</title>
+        <title>QuantCell</title>
         <Meta />
         <Links />
       </head>
