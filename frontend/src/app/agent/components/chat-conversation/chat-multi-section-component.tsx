@@ -1,7 +1,7 @@
 import { parse } from "best-effort-json-parser";
 import { type FC, memo } from "react";
-import BackButton from "@/components/quantcell/button/back-button";
-import { MarkdownRenderer } from "@/components/quantcell/renderer";
+import BackButton from "@/components/shared/button/back-button";
+import { MarkdownRenderer } from "@/components/shared/renderer";
 import { useMultiSection } from "@/provider/multi-section-provider";
 import type { MultiSectionComponentType } from "@/types/agent";
 

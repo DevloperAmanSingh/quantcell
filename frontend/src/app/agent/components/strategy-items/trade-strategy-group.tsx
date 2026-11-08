@@ -26,10 +26,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import SvgIcon from "@/components/quantcell/icon/svg-icon";
+import SvgIcon from "@/components/shared/icon/svg-icon";
 import CopyStrategyModal, {
   type CopyStrategyModelRef,
-} from "@/components/quantcell/modal/copy-strategy-modal";
+} from "@/components/shared/modal/copy-strategy-modal";
 import { TIME_FORMATS, TimeUtils } from "@/lib/time";
 import { formatChange, getChangeType } from "@/lib/utils";
 import { useStockColors } from "@/store/settings-store";

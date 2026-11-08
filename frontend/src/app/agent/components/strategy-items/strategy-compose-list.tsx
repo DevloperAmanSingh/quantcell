@@ -10,7 +10,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { PngIcon } from "@/components/quantcell/icon/png-icon";
+import { PngIcon } from "@/components/shared/icon/png-icon";
 import { TIME_FORMATS, TimeUtils } from "@/lib/time";
 import {
   formatChange,

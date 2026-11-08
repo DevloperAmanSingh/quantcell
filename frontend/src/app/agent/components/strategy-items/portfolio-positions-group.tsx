@@ -13,8 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import MultiLineChart from "@/components/quantcell/charts/model-multi-line";
-import { PngIcon } from "@/components/quantcell/icon/png-icon";
+import MultiLineChart from "@/components/shared/charts/model-multi-line";
+import { PngIcon } from "@/components/shared/icon/png-icon";
 // import { useTauriInfo } from "@/hooks/use-tauri-info";
 import {
   formatChange,

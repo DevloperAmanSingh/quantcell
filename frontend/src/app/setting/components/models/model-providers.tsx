@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Item, ItemGroup } from "@/components/ui/item";
-import PngIcon from "@/components/quantcell/icon/png-icon";
+import PngIcon from "@/components/shared/icon/png-icon";
 import { MODEL_PROVIDER_ICONS } from "@/constants/icons";
 import { cn } from "@/lib/utils";
 import type { ModelProvider } from "@/types/setting";

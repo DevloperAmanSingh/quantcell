@@ -1,7 +1,7 @@
 import type { AgentSuggestion } from "@/app/home/components/agent-suggestions-list";
 import { IconGroupPng, MessageGroupPng, TrendPng } from "@/assets/png";
 import { AutoTrade, NewsPush, ResearchReport } from "@/assets/svg";
-import SvgIcon from "@/components/quantcell/icon/svg-icon";
+import SvgIcon from "@/components/shared/icon/svg-icon";
 
 export const agentSuggestions: AgentSuggestion[] = [
   {

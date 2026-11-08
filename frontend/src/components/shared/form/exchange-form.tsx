@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroupItem } from "@/components/ui/radio-group";
 import { SelectItem } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import PngIcon from "@/components/quantcell/icon/png-icon";
+import PngIcon from "@/components/shared/icon/png-icon";
 import { EXCHANGE_ICONS } from "@/constants/icons";
 import { withForm } from "@/hooks/use-form";
 

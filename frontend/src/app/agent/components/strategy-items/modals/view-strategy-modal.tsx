@@ -6,7 +6,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import CloseButton from "@/components/quantcell/button/close-button";
+import CloseButton from "@/components/shared/button/close-button";
 import type { StrategyPrompt } from "@/types/strategy";
 
 interface ViewStrategyModalProps {

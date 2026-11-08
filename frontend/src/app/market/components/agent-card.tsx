@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { AgentAvatar } from "@/components/quantcell/icon/agent-avatar";
+import { AgentAvatar } from "@/components/shared/icon/agent-avatar";
 import { cn } from "@/lib/utils";
 import type { AgentInfo } from "@/types/agent";
 

@@ -1,6 +1,6 @@
 import { type FC, memo } from "react";
 import { NavLink } from "react-router";
-import { AgentAvatar } from "@/components/quantcell/icon/agent-avatar";
+import { AgentAvatar } from "@/components/shared/icon/agent-avatar";
 import { COMPONENT_RENDERER_MAP } from "@/constants/agent";
 import { TimeUtils } from "@/lib/time";
 import type { TaskCardItem } from "@/types/conversation";

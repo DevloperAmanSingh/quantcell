@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGetStockHistory } from "@/api/stock";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import Sparkline from "@/components/quantcell/charts/sparkline";
+import Sparkline from "@/components/shared/charts/sparkline";
 import { TimeUtils } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { SparklineData } from "@/types/chart";

@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import CloseButton from "@/components/quantcell/button/close-button";
+import CloseButton from "@/components/shared/button/close-button";
 
 interface NewPromptModalProps {
   onSave: (value: { name: string; content: string }) => void;

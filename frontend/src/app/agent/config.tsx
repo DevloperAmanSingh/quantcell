@@ -3,9 +3,9 @@ import { useTranslation } from "react-i18next";
 import { Link, Navigate, useParams } from "react-router";
 import { useEnableAgent, useGetAgentInfo } from "@/api/agent";
 import { Button } from "@/components/ui/button";
-import BackButton from "@/components/quantcell/button/back-button";
-import AgentAvatar from "@/components/quantcell/icon/agent-avatar";
-import { MarkdownRenderer } from "@/components/quantcell/renderer";
+import BackButton from "@/components/shared/button/back-button";
+import AgentAvatar from "@/components/shared/icon/agent-avatar";
+import { MarkdownRenderer } from "@/components/shared/renderer";
 import type { Route } from "./+types/config";
 
 export default function AgentConfig() {

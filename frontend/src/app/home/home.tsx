@@ -13,7 +13,7 @@ import {
 } from "@/assets/png";
 import { AutoTrade, NewsPush, ResearchReport } from "@/assets/svg";
 import TradingViewTickerTape from "@/components/tradingview/tradingview-ticker-tape";
-import SvgIcon from "@/components/quantcell/icon/svg-icon";
+import SvgIcon from "@/components/shared/icon/svg-icon";
 import ChatInputArea from "../agent/components/chat-conversation/chat-input-area";
 import { AgentSuggestionsList, AgentTaskCards } from "./components";
 

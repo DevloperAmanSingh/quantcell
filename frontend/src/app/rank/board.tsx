@@ -15,9 +15,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tag } from "@/components/quantcell/button/tag-groups";
-import { Rank1Icon, Rank2Icon, Rank3Icon } from "@/components/quantcell/icon";
-import { PngIcon } from "@/components/quantcell/icon/png-icon";
+import { Tag } from "@/components/shared/button/tag-groups";
+import { Rank1Icon, Rank2Icon, Rank3Icon } from "@/components/shared/icon";
+import { PngIcon } from "@/components/shared/icon/png-icon";
 import { EXCHANGE_ICONS } from "@/constants/icons";
 import { getChangeType, numberFixed } from "@/lib/utils";
 import { useStockColors } from "@/store/settings-store";

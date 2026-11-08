@@ -8,8 +8,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import TagGroups from "@/components/quantcell/button/tag-groups";
-import AgentAvatar from "@/components/quantcell/icon/agent-avatar";
+import TagGroups from "@/components/shared/button/tag-groups";
+import AgentAvatar from "@/components/shared/icon/agent-avatar";
 import type { AgentInfo } from "@/types/agent";
 
 interface ChatConversationHeaderProps {

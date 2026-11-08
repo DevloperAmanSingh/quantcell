@@ -5,7 +5,7 @@ import {
   AgentMenuIcon,
   AgentMenuSuffix,
   AgentMenuTitle,
-} from "@/components/quantcell/menus/agent-menus";
+} from "@/components/shared/menus/agent-menus";
 import { cn } from "@/lib/utils";
 
 export interface AgentSuggestion {

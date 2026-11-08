@@ -32,7 +32,4 @@ export default [
       route("/memory", "app/setting/memory.tsx"),
     ]),
   ]),
-
-  // router for test components
-  route("/test", "app/test.tsx"),
 ] satisfies RouteConfig;

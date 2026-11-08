@@ -19,13 +19,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import CloseButton from "@/components/quantcell/button/close-button";
-import { AIModelForm } from "@/components/quantcell/form/ai-model-form";
+import CloseButton from "@/components/shared/button/close-button";
+import { AIModelForm } from "@/components/shared/form/ai-model-form";
 import {
   EXCHANGE_OPTIONS,
   ExchangeForm,
-} from "@/components/quantcell/form/exchange-form";
-import { StepIndicator } from "@/components/quantcell/step-indicator";
+} from "@/components/shared/form/exchange-form";
+import { StepIndicator } from "@/components/shared/step-indicator";
 import { TRADING_SYMBOLS } from "@/constants/agent";
 import {
   createAiModelSchema,

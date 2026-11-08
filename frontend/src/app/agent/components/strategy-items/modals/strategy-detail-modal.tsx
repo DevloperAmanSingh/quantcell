@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import CopyStrategyModal, {
   type CopyStrategyModelRef,
-} from "@/components/quantcell/modal/copy-strategy-modal";
+} from "@/components/shared/modal/copy-strategy-modal";
 import { getChangeType, numberFixed } from "@/lib/utils";
 import { useStockColors } from "@/store/settings-store";
 import { useIsLoggedIn, useSystemInfo } from "@/store/system-store";

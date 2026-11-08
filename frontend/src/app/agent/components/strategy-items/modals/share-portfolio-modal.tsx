@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { PngIcon, RoundedLogo } from "@/components/quantcell/icon";
+import { PngIcon, RoundedLogo } from "@/components/shared/icon";
 import { EXCHANGE_ICONS } from "@/constants/icons";
 import { TIME_FORMATS, TimeUtils } from "@/lib/time";
 import { formatChange, getChangeType } from "@/lib/utils";

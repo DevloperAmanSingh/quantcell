@@ -1,6 +1,6 @@
 import { parse } from "best-effort-json-parser";
 import { type FC, memo } from "react";
-import { UnknownRenderer } from "@/components/quantcell/renderer";
+import { UnknownRenderer } from "@/components/shared/renderer";
 import { COMPONENT_RENDERER_MAP } from "@/constants/agent";
 import { cn } from "@/lib/utils";
 import { useMultiSection } from "@/provider/multi-section-provider";

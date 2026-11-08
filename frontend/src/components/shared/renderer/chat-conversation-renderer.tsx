@@ -7,7 +7,7 @@ import { useGetConversationHistory } from "@/api/conversation";
 import ChatThreadArea from "@/app/agent/components/chat-conversation/chat-thread-area";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import AgentAvatar from "@/components/quantcell/icon/agent-avatar";
+import AgentAvatar from "@/components/shared/icon/agent-avatar";
 import { useAgentStoreActions, useConversationById } from "@/store/agent-store";
 import type { ChatConversationRendererProps } from "@/types/renderer";
 

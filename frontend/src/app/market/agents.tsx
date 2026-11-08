@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { useGetAgentList } from "@/api/agent";
-import { AgentMarketSkeleton } from "@/components/quantcell/skeleton";
+import { AgentMarketSkeleton } from "@/components/shared/skeleton";
 import { AgentCard } from "./components/agent-card";
 
 export default function AgentMarket() {

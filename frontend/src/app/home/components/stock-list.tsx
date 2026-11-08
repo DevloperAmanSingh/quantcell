@@ -6,7 +6,7 @@ import {
   StockMenu,
   StockMenuHeader,
   StockMenuListItem,
-} from "@/components/quantcell/menus/stock-menus";
+} from "@/components/shared/menus/stock-menus";
 import type { Stock } from "@/types/stock";
 
 function StockList() {

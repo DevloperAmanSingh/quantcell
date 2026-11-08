@@ -7,7 +7,7 @@ import {
 } from "@/api/setting";
 import { FieldGroup } from "@/components/ui/field";
 import { SelectItem } from "@/components/ui/select";
-import PngIcon from "@/components/quantcell/icon/png-icon";
+import PngIcon from "@/components/shared/icon/png-icon";
 import { MODEL_PROVIDER_ICONS } from "@/constants/icons";
 import { withForm } from "@/hooks/use-form";
 

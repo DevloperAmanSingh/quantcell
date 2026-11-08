@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import "@/i18n";
-import AppSidebar from "@/components/quantcell/app/app-sidebar";
+import AppSidebar from "@/components/shared/app/app-sidebar";
 import { useLanguage } from "@/store/settings-store";
 import { Toaster } from "./components/ui/sonner";
 
@@ -52,8 +52,8 @@ const queryClient = new QueryClient({
   },
 });
 
-import { AutoUpdateCheck } from "@/components/quantcell/app/auto-update-check";
-import { BackendHealthCheck } from "@/components/quantcell/app/backend-health-check";
+import { AutoUpdateCheck } from "@/components/shared/app/auto-update-check";
+import { BackendHealthCheck } from "@/components/shared/app/backend-health-check";
 import { TrackerProvider } from "./provider/tracker-provider";
 
 export default function Root() {

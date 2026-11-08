@@ -6,8 +6,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import BackButton from "@/components/quantcell/button/back-button";
-import { MarkdownRenderer } from "@/components/quantcell/renderer";
+import BackButton from "@/components/shared/button/back-button";
+import { MarkdownRenderer } from "@/components/shared/renderer";
 import { COMPONENT_RENDERER_MAP } from "@/constants/agent";
 import type { SectionComponentType, TaskView, ThreadView } from "@/types/agent";
 

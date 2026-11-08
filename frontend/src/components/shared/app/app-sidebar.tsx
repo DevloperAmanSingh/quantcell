@@ -21,9 +21,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import AppConversationSheet from "@/components/quantcell/app/app-conversation-sheet";
-import AgentAvatar from "@/components/quantcell/icon/agent-avatar";
-import SvgIcon from "@/components/quantcell/icon/svg-icon";
+import AppConversationSheet from "@/components/shared/app/app-conversation-sheet";
+import AgentAvatar from "@/components/shared/icon/agent-avatar";
+import SvgIcon from "@/components/shared/icon/svg-icon";
 import { cn } from "@/lib/utils";
 
 interface SidebarItemProps extends HTMLAttributes<HTMLButtonElement> {

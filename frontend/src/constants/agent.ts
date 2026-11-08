@@ -1,26 +1,8 @@
 import {
-  AswathDamodaranPng,
-  BenGrahamPng,
-  BillAckmanPng,
-  CathieWoodPng,
-  CharlieMungerPng,
-  EmotionalAgencyPng,
-  FundamentalProxyPng,
-  MichaelBurryPng,
-  MohnishPabraiPng,
-  NewPushAgentPng,
-  PeterLynchPng,
-  PhilFisherPng,
-  PortfolioManagerPng,
-  RakeshJhunjhunwalaPng,
-  ResearchAgentPng,
-  SecAgentPng,
-  StanleyDruckenmillerPng,
-  StrategyAgentPng,
-  TechnicalAgencyPng,
-  ValuationAgencyPng,
+  NewsAgentPng,
   QuantCellAgentPng,
-  WarrenBuffettPng,
+  ResearchAgentPng,
+  StrategyAgentPng,
 } from "@/assets/png";
 import {
   ChatConversationRenderer,
@@ -30,7 +12,7 @@ import {
   ScheduledTaskControllerRenderer,
   ScheduledTaskRenderer,
   ToolCallRenderer,
-} from "@/components/quantcell/renderer";
+} from "@/components/shared/renderer";
 import { TimeUtils } from "@/lib/time";
 import type { AgentComponentType, AgentInfo } from "@/types/agent";
 import type { RendererComponent } from "@/types/renderer";
@@ -68,33 +50,10 @@ export const COMPONENT_RENDERER_MAP: {
 };
 
 export const AGENT_AVATAR_MAP: Record<string, string> = {
-  // Investment Masters
-  ResearchAgent: ResearchAgentPng,
-  StrategyAgent: StrategyAgentPng,
-  AswathDamodaranAgent: AswathDamodaranPng,
-  BenGrahamAgent: BenGrahamPng,
-  BillAckmanAgent: BillAckmanPng,
-  CathieWoodAgent: CathieWoodPng,
-  CharlieMungerAgent: CharlieMungerPng,
-  MichaelBurryAgent: MichaelBurryPng,
-  MohnishPabraiAgent: MohnishPabraiPng,
-  PeterLynchAgent: PeterLynchPng,
-  PhilFisherAgent: PhilFisherPng,
-  RakeshJhunjhunwalaAgent: RakeshJhunjhunwalaPng,
-  StanleyDruckenmillerAgent: StanleyDruckenmillerPng,
-  WarrenBuffettAgent: WarrenBuffettPng,
   QuantCellAgent: QuantCellAgentPng,
-
-  // Analyst Agents
-  FundamentalsAnalystAgent: FundamentalProxyPng,
-  TechnicalAnalystAgent: TechnicalAgencyPng,
-  ValuationAnalystAgent: ValuationAgencyPng,
-  SentimentAnalystAgent: EmotionalAgencyPng,
-
-  // System Agents
-  TradingAgents: PortfolioManagerPng,
-  SECAgent: SecAgentPng,
-  NewsAgent: NewPushAgentPng,
+  ResearchAgent: ResearchAgentPng,
+  NewsAgent: NewsAgentPng,
+  StrategyAgent: StrategyAgentPng,
 };
 
 export const QUANTCELL_AGENT: AgentInfo = {

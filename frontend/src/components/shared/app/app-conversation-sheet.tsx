@@ -26,7 +26,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import AgentAvatar from "@/components/quantcell/icon/agent-avatar";
+import AgentAvatar from "@/components/shared/icon/agent-avatar";
 import { TIME_FORMATS, TimeUtils } from "@/lib/time";
 
 const AppConversationSheet: FC<{ children: ReactNode }> = ({ children }) => {

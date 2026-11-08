@@ -28,7 +28,7 @@
         "./src/*"
       ],
       "@quantcell/*": [
-        "./src/components/quantcell/*"
+        "./src/components/shared/*"
       ]
     },
     "types": [

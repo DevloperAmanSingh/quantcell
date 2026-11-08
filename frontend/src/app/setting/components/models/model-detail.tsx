@@ -36,7 +36,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Switch } from "@/components/ui/switch";
-import LinkButton from "@/components/quantcell/button/link-button";
+import LinkButton from "@/components/shared/button/link-button";
 
 const configSchema = z.object({
   api_key: z.string(),
