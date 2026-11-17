@@ -1,145 +1,149 @@
+import { ArrowUp, CandlestickChart, FileSearch, Newspaper } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useState } from "react";
+import { type FormEvent, type KeyboardEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { NavLink, useNavigate } from "react-router";
 import { useAllPollTaskList } from "@/api/conversation";
-import {
-  IconGroupDarkPng,
-  IconGroupPng,
-  MessageGroupDarkPng,
-  MessageGroupPng,
-  TrendDarkPng,
-  TrendPng,
-} from "@/assets/png";
-import { AutoTrade, NewsPush, ResearchReport } from "@/assets/svg";
 import TradingViewTickerTape from "@/components/tradingview/tradingview-ticker-tape";
-import SvgIcon from "@/components/shared/icon/svg-icon";
-import ChatInputArea from "../agent/components/chat-conversation/chat-input-area";
-import { AgentSuggestionsList, AgentTaskCards } from "./components";
+import { Button } from "@/components/ui/button";
+import { QUANTCELL_AGENT } from "@/constants/agent";
+import { AgentTaskCards } from "./components";
 
 const INDEX_SYMBOLS = [
   "FOREXCOM:SPXUSD",
-  "NASDAQ:IXIC",
-  "NASDAQ:NDX",
   "INDEX:HSI",
   "SSE:000001",
   "BINANCE:BTCUSDT",
   "BINANCE:ETHUSDT",
 ];
 
-function Home() {
-  const { t, i18n } = useTranslation();
-  const { resolvedTheme } = useTheme();
+const MORNING_END_HOUR = 12;
+const AFTERNOON_END_HOUR = 18;
+
+function greetingKey(hour: number): string {
+  if (hour < MORNING_END_HOUR) return "home.greeting.morning";
+  if (hour < AFTERNOON_END_HOUR) return "home.greeting.afternoon";
+  return "home.greeting.evening";
+}
+
+/** Sends the first message to the QuantCell super agent's chat page. */
+function HomeComposer() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
-  const [inputValue, setInputValue] = useState<string>("");
+  const [value, setValue] = useState("");
+  const query = value.trim();
 
-  const { data: allPollTaskList } = useAllPollTaskList();
-
-  const handleAgentClick = (agentId: string) => {
-    navigate(`/agent/${agentId}`);
+  const submit = (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!query) return;
+    navigate(`/agent/${QUANTCELL_AGENT.agent_name}`, {
+      state: { inputValue: query },
+    });
   };
 
-  const isDark = resolvedTheme === "dark";
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      submit(event);
+    }
+  };
 
-  const suggestions = [
-    {
-      id: "ResearchAgent",
-      title: t("home.suggestions.research.title"),
-      icon: <SvgIcon name={ResearchReport} />,
-      description: t("home.suggestions.research.description"),
-      bgColor: isDark
-        ? "bg-gradient-to-r from-[#111827]/80 from-[5.05%] to-[#1D4ED8]/35 to-[100%]"
-        : "bg-gradient-to-r from-[#FFFFFF]/70 from-[5.05%] to-[#E7EFFF]/70 to-[100%]",
-      decorativeGraphics: (
-        <img src={isDark ? IconGroupDarkPng : IconGroupPng} alt="IconGroup" />
-      ),
-    },
-    {
-      id: "StrategyAgent",
-      title: t("home.suggestions.strategy.title"),
-      icon: <SvgIcon name={AutoTrade} />,
-      description: t("home.suggestions.strategy.description"),
-      bgColor: isDark
-        ? "bg-gradient-to-r from-[#111827]/80 from-[5.05%] to-[#7C3AED]/30 to-[100%]"
-        : "bg-gradient-to-r from-[#FFFFFF]/70 from-[5.05%] to-[#EAE8FF]/70 to-[100%]",
-      decorativeGraphics: (
-        <img src={isDark ? TrendDarkPng : TrendPng} alt="Trend" />
-      ),
-    },
-    {
-      id: "NewsAgent",
-      title: t("home.suggestions.news.title"),
-      icon: <SvgIcon name={NewsPush} />,
-      description: t("home.suggestions.news.description"),
-      bgColor: isDark
-        ? "bg-gradient-to-r from-[#111827]/80 from-[5.05%] to-[#DB2777]/25 to-[100%]"
-        : "bg-gradient-to-r from-[#FFFFFF]/70 from-[5.05%] to-[#FFE7FD]/70 to-[100%]",
-      decorativeGraphics: (
-        <img
-          src={isDark ? MessageGroupDarkPng : MessageGroupPng}
-          alt="MessageGroup"
-        />
-      ),
-    },
+  return (
+    <form
+      onSubmit={submit}
+      className="flex w-full flex-col rounded-2xl border border-border bg-card shadow-sm focus-within:ring-2 focus-within:ring-ring/30"
+    >
+      <textarea
+        rows={2}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={t("home.composerPlaceholder")}
+        className="w-full resize-none bg-transparent px-4 pt-3.5 text-foreground text-sm outline-none placeholder:text-muted-foreground"
+      />
+      <div className="flex justify-end px-2.5 pb-2.5">
+        <Button
+          type="submit"
+          size="icon"
+          disabled={!query}
+          aria-label={t("chat.send")}
+          className="size-8 rounded-full"
+        >
+          <ArrowUp className="size-4" />
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function QuickActions() {
+  const { t } = useTranslation();
+  const actions = [
+    { to: "/agent/ResearchAgent", icon: FileSearch, key: "research" },
+    { to: "/agent/StrategyAgent", icon: CandlestickChart, key: "strategy" },
+    { to: "/agent/NewsAgent", icon: Newspaper, key: "news" },
   ];
 
   return (
-    <div className="flex h-full min-w-[800px] flex-col gap-3">
-      {allPollTaskList && allPollTaskList.length > 0 ? (
-        <section className="flex w-full flex-1 flex-col items-center justify-between gap-4">
-          <TradingViewTickerTape
-            symbols={INDEX_SYMBOLS}
-            theme={resolvedTheme === "dark" ? "dark" : "light"}
-            locale={i18n.language}
-          />
+    <section className="space-y-3">
+      <h2 className="font-medium text-muted-foreground text-sm">
+        {t("home.quickActions")}
+      </h2>
+      <div className="grid @md:grid-cols-3 gap-3">
+        {actions.map((action) => (
+          <NavLink
+            key={action.key}
+            to={action.to}
+            className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted"
+          >
+            <action.icon className="size-5 text-muted-foreground group-hover:text-foreground" />
+            <span className="font-medium text-foreground text-sm">
+              {t(`home.suggestions.${action.key}.title`)}
+            </span>
+            <span className="text-muted-foreground text-xs leading-relaxed">
+              {t(`home.suggestions.${action.key}.description`)}
+            </span>
+          </NavLink>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-          <div className="scroll-container flex-1">
-            <AgentTaskCards tasks={allPollTaskList} />
-          </div>
+function Home() {
+  const { t, i18n } = useTranslation();
+  const { resolvedTheme } = useTheme();
+  const { data: scheduledResults = [] } = useAllPollTaskList();
 
-          <ChatInputArea
-            value={inputValue}
-            onChange={(value) => setInputValue(value)}
-            onSend={() =>
-              navigate("/agent/QuantCellAgent", {
-                state: {
-                  inputValue,
-                },
-              })
-            }
-          />
-        </section>
-      ) : (
-        <section className="flex w-full flex-1 flex-col items-center gap-8 rounded-lg bg-card px-6 pt-12">
-          <TradingViewTickerTape
-            symbols={INDEX_SYMBOLS}
-            theme={resolvedTheme === "dark" ? "dark" : "light"}
-            locale={i18n.language}
-          />
+  return (
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-10 @xl:px-6 px-4 py-6">
+      <TradingViewTickerTape
+        symbols={INDEX_SYMBOLS}
+        theme={resolvedTheme === "dark" ? "dark" : "light"}
+        locale={i18n.language}
+      />
 
-          <h1 className="mt-16 font-medium text-3xl text-foreground">
-            {t("home.hello")}
+      <section className="flex flex-col gap-5 pt-4">
+        <div className="space-y-1.5">
+          <h1 className="font-semibold @xl:text-3xl text-2xl text-foreground">
+            {t(greetingKey(new Date().getHours()))}
           </h1>
+          <p className="text-muted-foreground text-sm">{t("home.subtitle")}</p>
+        </div>
+        <HomeComposer />
+      </section>
 
-          <ChatInputArea
-            className="w-4/5 max-w-[800px]"
-            value={inputValue}
-            onChange={(value) => setInputValue(value)}
-            onSend={() =>
-              navigate("/agent/QuantCellAgent", {
-                state: {
-                  inputValue,
-                },
-              })
-            }
-          />
+      <QuickActions />
 
-          <AgentSuggestionsList
-            suggestions={suggestions.map((suggestion) => ({
-              ...suggestion,
-              onClick: () => handleAgentClick(suggestion.id),
-            }))}
-          />
+      {scheduledResults.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="font-medium text-muted-foreground text-sm">
+            {t("home.latestResults")}
+          </h2>
+          <AgentTaskCards tasks={scheduledResults} />
         </section>
       )}
     </div>

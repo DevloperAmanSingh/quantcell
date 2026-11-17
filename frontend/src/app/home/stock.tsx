@@ -4,9 +4,9 @@ import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { useGetStockDetail, useRemoveStockFromWatchlist } from "@/api/stock";
+import LinkButton from "@/components/shared/button/link-button";
 import TradingViewAdvancedChart from "@/components/tradingview/tradingview-advanced-chart";
 import { Button } from "@/components/ui/button";
-import LinkButton from "@/components/shared/button/link-button";
 import type { Route } from "./+types/stock";
 
 function Stock() {
