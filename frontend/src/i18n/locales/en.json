@@ -109,10 +109,17 @@
   },
   "nav": {
     "home": "Home",
-    "strategy": "Strategy",
+    "strategy": "Strategies",
     "ranking": "Ranking",
-    "market": "Market",
-    "setting": "Setting"
+    "market": "Agent market",
+    "setting": "Settings",
+    "workspace": "Workspace",
+    "agents": "Agents",
+    "askQuantCell": "Ask QuantCell",
+    "recentChats": "Recent chats",
+    "newChat": "New chat",
+    "toggleSidebar": "Toggle sidebar",
+    "chatOptions": "Chat options"
   },
   "updates": {
     "toast": {
@@ -161,6 +168,40 @@
     },
     "action": {
       "delete": "Delete"
+    },
+    "thinking": "Thinking…",
+    "reasoning": {
+      "running": "Reasoning…",
+      "done": "Reasoning"
+    },
+    "tool": {
+      "running": "Running {{name}}",
+      "done": "Used {{name}}",
+      "noOutput": "No output"
+    },
+    "planQuestion": "The planner needs your input",
+    "planQuestionHint": "Reply below to continue.",
+    "error": "Something went wrong",
+    "scrollToBottom": "Scroll to bottom",
+    "copy": "Copy",
+    "send": "Send",
+    "disclaimer": "QuantCell can make mistakes. This is not financial advice.",
+    "suggestions": {
+      "QuantCellAgent": [
+        "Summarize Apple's latest 10-K",
+        "What changed in NVIDIA's last 10-Q?",
+        "Send me a daily briefing on Tesla news"
+      ],
+      "ResearchAgent": [
+        "Summarize Apple's latest 10-K",
+        "Compare Microsoft and Google revenue growth",
+        "What did Berkshire buy in its latest 13F?"
+      ],
+      "NewsAgent": [
+        "What's moving the market today?",
+        "Latest news on NVIDIA",
+        "Send me crypto headlines every morning at 9am"
+      ]
     }
   },
   "strategy": {
@@ -176,7 +217,8 @@
       "openai": "OpenAI",
       "openai-compatible": "OpenAI Compatible API",
       "openrouter": "OpenRouter",
-      "siliconflow": "SiliconFlow"
+      "siliconflow": "SiliconFlow",
+      "ollama": "Ollama"
     },
     "title": "Trading Strategies",
     "add": "Add trading strategy",
@@ -385,29 +427,42 @@
       "website": "Website:"
     },
     "search": {
-      "title": "Stock Search",
-      "placeholder": "Search for stock name or code",
+      "title": "Add to watchlist",
+      "placeholder": "Search stocks, ETFs or crypto by name or ticker",
       "searching": "Searching...",
       "noResults": "No related stocks found",
       "action": {
         "watch": "Watchlist",
         "watching": "Watching...",
         "watched": "Watched"
-      }
+      },
+      "popular": "Popular",
+      "results": "Results",
+      "noMatches": "No matches for “{{query}}”. Try a ticker like AAPL.",
+      "hint": "Press Enter to add the highlighted result"
     },
     "suggestions": {
       "research": {
-        "title": "Deep Research",
-        "description": "Analyze SEC filings to generate in-depth stock interpretation reports."
+        "title": "Deep research",
+        "description": "Read SEC filings and get a cited summary."
       },
       "strategy": {
-        "title": "Automated Trading",
-        "description": "Multi-strategy smart trading, automatically execute your strategies."
+        "title": "Automated trading",
+        "description": "Run grid or prompt strategies, live or on paper."
       },
       "news": {
-        "title": "Pushing News",
-        "description": "Personalized news updates on a custom schedule."
+        "title": "News briefings",
+        "description": "Get personalized market news on a schedule."
       }
-    }
+    },
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    },
+    "subtitle": "Research filings, track the news, or run a strategy. Ask in plain English.",
+    "composerPlaceholder": "Ask about a company, a filing, or the market…",
+    "quickActions": "Start with an agent",
+    "latestResults": "Latest scheduled results"
   }
 }
