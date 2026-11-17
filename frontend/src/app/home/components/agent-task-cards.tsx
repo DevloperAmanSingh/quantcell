@@ -49,7 +49,7 @@ const AgentTaskCard: FC<TaskCardItem> = ({
 
 const AgentTaskCards: FC<{ tasks: TaskCardItem[] }> = ({ tasks }) => {
   return (
-    <div className="columns-2 gap-4">
+    <div className="@2xl:columns-2 gap-4">
       {tasks.map((task) => (
         <section key={task.agent_name} className="mb-3 break-inside-avoid">
           <AgentTaskCard {...task} />
