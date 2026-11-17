@@ -44,13 +44,20 @@ export type AgentToolCallMessage = MessageWithPayload<{
    */
   tool_call_id: string;
   tool_name: string;
-  tool_call_result?: string;
+  /** Matches `ToolCallPayload.tool_result` in the Python backend. */
+  tool_result?: string;
 }>;
 
 type ChatMessage = AgentChunkMessage | AgentComponentMessage;
 
 export type ChatItem = ChatMessage & {
   component_type: AgentComponentType;
+  /**
+   * The SSE event that produced this item. Several events (errors, planner
+   * questions, plain text) share the "markdown" component type, so the chat
+   * UI needs the original event to render them differently.
+   */
+  source_event?: keyof AgentEventMap;
 };
 
 export interface AgentEventMap {

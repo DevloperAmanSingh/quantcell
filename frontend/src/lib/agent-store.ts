@@ -204,7 +204,11 @@ function processSSEEvent(draft: AgentConversationsStore, sseData: SSEData) {
     case "plan_failed":
     case "plan_require_user_input":
       // Other events are set as markdown type
-      handleChatItemEvent(draft, { component_type: "markdown", ...data });
+      handleChatItemEvent(draft, {
+        component_type: "markdown",
+        source_event: event,
+        ...data,
+      });
       break;
 
     case "reasoning":
