@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { Item, ItemGroup } from "@/components/ui/item";
 import PngIcon from "@/components/shared/icon/png-icon";
+import { Item, ItemGroup } from "@/components/ui/item";
 import { MODEL_PROVIDER_ICONS } from "@/constants/icons";
 import { cn } from "@/lib/utils";
 import type { ModelProvider } from "@/types/setting";
@@ -19,8 +19,8 @@ export function ModelProviders({
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col gap-4 overflow-hidden *:px-6">
-      <h2 className="font-semibold text-foreground text-lg">
+    <div className="flex w-56 shrink-0 flex-col gap-3 overflow-hidden border-border border-r py-5 *:px-3">
+      <h2 className="px-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {t("settings.models.title")}
       </h2>
 

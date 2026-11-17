@@ -13,6 +13,7 @@ import {
   useSetDefaultProviderModel,
   useUpdateProviderConfig,
 } from "@/api/setting";
+import LinkButton from "@/components/shared/button/link-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,7 +37,6 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Switch } from "@/components/ui/switch";
-import LinkButton from "@/components/shared/button/link-button";
 
 const configSchema = z.object({
   api_key: z.string(),
@@ -159,13 +159,13 @@ export function ModelDetail({ provider }: ModelDetailProps) {
   }
 
   return (
-    <div className="scroll-container flex flex-1 flex-col px-8">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="scroll-container flex min-w-0 flex-1 flex-col px-6 py-5">
+      <div className="mb-4 flex max-w-2xl flex-wrap items-center justify-between gap-3">
         <p className="font-semibold text-foreground text-lg">
           {t(`strategy.providers.${provider}`) || provider}
         </p>
         <div className="flex items-center gap-2">
-          <p className="font-semibold text-base text-muted-foreground">
+          <p className="whitespace-nowrap text-muted-foreground text-sm">
             {t("settings.models.defaultProvider")}
           </p>
           <Switch
@@ -176,7 +176,7 @@ export function ModelDetail({ provider }: ModelDetailProps) {
         </div>
       </div>
 
-      <form>
+      <form className="max-w-2xl">
         <div className="flex flex-col gap-6">
           <FieldGroup>
             <configForm.Field name="api_key">

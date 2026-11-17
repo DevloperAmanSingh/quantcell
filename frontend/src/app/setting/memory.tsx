@@ -13,7 +13,7 @@ export default function MemoryPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-5 px-16 py-10">
+      <div className="scroll-container flex max-w-3xl flex-1 flex-col gap-5 px-6 py-5">
         <div className="flex flex-col gap-1.5">
           <h1 className="font-bold text-foreground text-xl">
             {t("settings.memory.title")}
@@ -30,7 +30,7 @@ export default function MemoryPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 px-16 py-10">
+    <div className="scroll-container flex max-w-3xl flex-1 flex-col gap-5 px-6 py-5">
       {/* Title section */}
       <div className="flex flex-col gap-1.5">
         <h1 className="font-bold text-foreground text-xl">

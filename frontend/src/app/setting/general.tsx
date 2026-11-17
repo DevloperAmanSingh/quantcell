@@ -42,7 +42,7 @@ export default function GeneralPage() {
 
   // const { mutate: signOut } = useSignOut();
   return (
-    <div className="flex flex-1 flex-col gap-4 p-10">
+    <div className="scroll-container flex max-w-3xl flex-1 flex-col gap-4 px-6 py-5">
       <div className="flex flex-col gap-1.5">
         <h1 className="font-bold text-xl">{t("general.title")}</h1>
         <p className="font-normal text-muted-foreground text-sm">
