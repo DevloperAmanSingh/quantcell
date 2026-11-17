@@ -1,8 +1,8 @@
 import { ArrowUp } from "lucide-react";
 import { type FC, memo } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import ScrollTextarea from "@/components/shared/scroll/scroll-textarea";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface ChatInputAreaProps {

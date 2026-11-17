@@ -1,4 +1,6 @@
 import { type FC, memo, useMemo, useState } from "react";
+import BackButton from "@/components/shared/button/back-button";
+import { MarkdownRenderer } from "@/components/shared/renderer";
 import {
   Select,
   SelectContent,
@@ -6,8 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import BackButton from "@/components/shared/button/back-button";
-import { MarkdownRenderer } from "@/components/shared/renderer";
 import { COMPONENT_RENDERER_MAP } from "@/constants/agent";
 import type { SectionComponentType, TaskView, ThreadView } from "@/types/agent";
 
