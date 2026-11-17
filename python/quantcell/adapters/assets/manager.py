@@ -7,7 +7,8 @@ and routing requests to the appropriate providers based on asset types and avail
 import json
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -26,6 +27,12 @@ from .types import (
     Watchlist,
 )
 from .yfinance_adapter import YFinanceAdapter
+
+# Overall deadline for a multi-source asset search, in seconds. Search backs
+# an as-you-type box, so a slow source must not hold up the fast ones.
+SEARCH_TIMEOUT_S: float = 5.0
+# How long a source that missed the search deadline is skipped, in seconds.
+SEARCH_COOLDOWN_S: float = 300.0
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +53,10 @@ class AdapterManager:
         self._cache_lock = threading.Lock()
 
         self.lock = threading.RLock()
+
+        # Sources that recently missed the search deadline, mapped to the
+        # monotonic time until which search skips them.
+        self._search_skip_until: Dict[DataSource, float] = {}
 
         logger.info("Asset adapter manager initialized")
 
@@ -318,29 +329,47 @@ class AdapterManager:
         # Determine which adapters to use based on asset types
         target_adapters = set()
 
-        # Use all available adapters
+        # Use all available adapters, except sources cooling down after a
+        # timeout (e.g. BaoStock when its servers are unreachable).
+        now = time.monotonic()
         with self.lock:
-            target_adapters.update(self.adapters.values())
+            target_adapters.update(
+                adapter
+                for adapter in self.adapters.values()
+                if self._search_skip_until.get(adapter.source, 0.0) <= now
+            )
 
         # Search in parallel across adapters
         if not target_adapters:
             return []
 
-        with ThreadPoolExecutor(max_workers=len(target_adapters)) as executor:
-            future_to_adapter = {
-                executor.submit(adapter.search_assets, query): adapter
-                for adapter in target_adapters
-            }
+        # One overall deadline for the fan-out. A `with` block would wait for
+        # every worker on exit, so a single hanging source (BaoStock when its
+        # servers are unreachable) used to block search for over a minute.
+        executor = ThreadPoolExecutor(max_workers=len(target_adapters))
+        future_to_adapter = {
+            executor.submit(adapter.search_assets, query): adapter
+            for adapter in target_adapters
+        }
+        done, pending = wait(future_to_adapter, timeout=SEARCH_TIMEOUT_S)
+        executor.shutdown(wait=False, cancel_futures=True)
 
-            for future in as_completed(future_to_adapter):
-                adapter = future_to_adapter[future]
-                try:
-                    results = future.result(timeout=15)
-                    all_results.extend(results)
-                except Exception as e:
-                    logger.warning(
-                        f"Search failed for adapter {adapter.source.value}: {e}"
-                    )
+        for future in done:
+            adapter = future_to_adapter[future]
+            try:
+                all_results.extend(future.result())
+            except Exception as e:
+                logger.warning(
+                    f"Search failed for adapter {adapter.source.value}: {e}"
+                )
+        for future in pending:
+            source = future_to_adapter[future].source
+            with self.lock:
+                self._search_skip_until[source] = time.monotonic() + SEARCH_COOLDOWN_S
+            logger.warning(
+                f"Search timed out after {SEARCH_TIMEOUT_S}s for adapter "
+                f"{source.value}; skipping it for {SEARCH_COOLDOWN_S}s"
+            )
 
         # Smart deduplication of results
         unique_results = self._deduplicate_search_results(all_results)
