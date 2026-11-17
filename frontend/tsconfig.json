@@ -32,7 +32,8 @@
       ]
     },
     "types": [
-      "vite-plugin-svg-sprite/typings/vanilla"
+      "vite-plugin-svg-sprite/typings/vanilla",
+      "bun"
     ],
     "rootDirs": [
       ".",
