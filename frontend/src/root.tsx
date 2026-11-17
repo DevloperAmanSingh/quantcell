@@ -7,7 +7,7 @@ import { useLanguage } from "@/store/settings-store";
 import { Toaster } from "./components/ui/sonner";
 
 import "./global.css";
-import { SidebarProvider } from "./components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "./components/ui/sidebar";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const language = useLanguage();
@@ -72,12 +72,12 @@ export default function Root() {
               <div className="fixed flex size-full overflow-hidden">
                 <AppSidebar />
 
-                <main
-                  className="relative flex flex-1 overflow-hidden"
+                <SidebarInset
+                  className="relative flex-row overflow-hidden"
                   id="main-content"
                 >
                   <Outlet />
-                </main>
+                </SidebarInset>
                 <Toaster />
               </div>
             </SidebarProvider>
